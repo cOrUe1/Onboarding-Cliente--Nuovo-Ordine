@@ -11,10 +11,10 @@ const Index = () => {
       {/* Hero Section */}
       <div className="w-full max-w-md mx-auto mb-6 p-5 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
         <h1 className="text-center font-bold text-xl md:text-2xl text-gray-900 dark:text-gray-100 mb-2">
-          Gatekeeper Modulo 1
+          Onboarding cliente / Nuovo ordine
         </h1>
         <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-          Inserisci un nuovo cliente o cerca un cliente esistente.
+          Verifica se un cliente è già stato inserito o inseriscine di nuovi.
         </p>
       </div>
 
