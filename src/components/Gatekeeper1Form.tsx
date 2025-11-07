@@ -351,7 +351,7 @@ const Gatekeeper1Form: React.FC = () => {
   return (
     <Card className="w-full max-w-md mx-auto shadow-lg">
       <CardHeader>
-        <CardTitle className="text-center text-xl md:text-2xl">Inserimento Cliente o Ordine</CardTitle>
+        <CardTitle className="text-center text-xl md:text-2xl">Inserisci un Cliente o Ordine</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <Input
