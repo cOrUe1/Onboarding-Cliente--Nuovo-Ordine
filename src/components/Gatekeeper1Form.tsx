@@ -158,8 +158,8 @@ const Gatekeeper1Form: React.FC = () => {
           );
         } else if (result.reason === 'name_near') {
           // Punto 2: Se Nome =, Cognome =, Numero!= ---> Avviso di omonimia
-          const exactNameMatches = result.near.filter((m: CustomerRecord) => m.dist === 0);
-          const similarNameMatches = result.near.filter((m: CustomerRecord) => m.dist > 0);
+          const exactNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist === 0);
+          const similarNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist > 0);
 
           warningMessage = (
             <>
@@ -194,7 +194,7 @@ const Gatekeeper1Form: React.FC = () => {
                         <Phone className="h-4 w-4" />
                         <p>{m.phone}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                      <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
                     </Card>
                   ))}
                 </>
