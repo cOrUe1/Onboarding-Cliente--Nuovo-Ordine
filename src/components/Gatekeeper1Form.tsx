@@ -157,6 +157,7 @@ const Gatekeeper1Form: React.FC = () => {
             </>
           );
         } else if (result.reason === 'name_near') {
+          console.log("DEBUG: result for name_near:", result); // Log per diagnostica
           // Punto 2: Se Nome =, Cognome =, Numero!= ---> Avviso di omonimia
           const exactNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist === 0);
           const similarNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist > 0);
