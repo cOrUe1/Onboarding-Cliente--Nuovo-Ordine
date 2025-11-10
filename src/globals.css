@@ -118,8 +118,8 @@
       padding-right: 1rem !important;
     }
 
-    button,
-    .btn { /* Apply to shadcn button component */
+    button:not([role="radio"]),
+    .btn { /* Apply to shadcn button component while preserving radio sizing */
       font-size: 19px !important;
       min-height: 48px !important;
       padding-left: 1.5rem !important;
