@@ -351,7 +351,7 @@ const Gatekeeper1Form: React.FC = () => {
   return (
     <Card className="w-full max-w-md mx-auto shadow-lg">
       <CardHeader>
-        <CardTitle className="text-center text-xl md:text-2xl">Inserisci un Cliente o Ordine</CardTitle>
+        <CardTitle className="text-center text-xl md:text-2xl">Modulo 1: Inserimento Cliente/Ordine</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <Input
@@ -379,14 +379,14 @@ const Gatekeeper1Form: React.FC = () => {
           disabled={loading}
         />
 
-        <RadioGroup value={mode} onValueChange={(value: FormMode) => setMode(value)} className="flex gap-4 justify-center">
-          <div className="flex items-center space-x-2">
+        <RadioGroup value={mode} onValueChange={(value: FormMode) => setMode(value)} className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex items-center space-x-2 p-2 min-h-[48px] cursor-pointer">
             <RadioGroupItem value="new" id="mode-new" disabled={loading} />
-            <Label htmlFor="mode-new">Nuovo cliente</Label>
+            <Label htmlFor="mode-new" className="cursor-pointer">Nuovo cliente</Label>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 p-2 min-h-[48px] cursor-pointer">
             <RadioGroupItem value="existing" id="mode-existing" disabled={loading} />
-            <Label htmlFor="mode-existing">Cliente esistente</Label>
+            <Label htmlFor="mode-existing" className="cursor-pointer">Cliente esistente</Label>
           </div>
         </RadioGroup>
 
