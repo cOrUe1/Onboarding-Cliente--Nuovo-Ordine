@@ -379,7 +379,7 @@ const Gatekeeper1Form: React.FC = () => {
           disabled={loading}
         />
 
-        <RadioGroup value={mode} onValueChange={(value: FormMode) => setMode(value)} className="flex flex-col sm:flex-row gap-4 justify-center">
+        <RadioGroup value={mode} onValueChange={(value: FormMode) => setMode(value)} className="flex flex-row gap-4 justify-center items-center">
           <div className="flex items-center space-x-2 p-2 min-h-[48px] cursor-pointer">
             <RadioGroupItem value="new" id="mode-new" disabled={loading} />
             <Label htmlFor="mode-new" className="cursor-pointer">Nuovo cliente</Label>
