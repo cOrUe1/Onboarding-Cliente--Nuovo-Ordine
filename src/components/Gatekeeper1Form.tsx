@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +30,6 @@ const Gatekeeper1Form: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [activeAction, setActiveAction] = useState<'search' | 'open' | null>(null);
   const [message, setMessage] = useState<{ type: 'info' | 'warning' | 'error'; text: string } | null>(null);
-  const [existingResults, setExistingResults] = useState<CustomerRecord[]>([]);
 
   // State per l'AlertDialog di conferma/avviso
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
@@ -54,7 +53,6 @@ const Gatekeeper1Form: React.FC = () => {
     setMessage(null);
     setIsAlertDialogOpen(false);
     setAlertDialogContent(null);
-    setExistingResults([]);
   };
 
   const normalizePhone = (value: string) => {
@@ -112,7 +110,6 @@ const Gatekeeper1Form: React.FC = () => {
 
   const handleSearch = async () => {
     setMessage(null);
-    setExistingResults([]);
 
     const normalizedPhone = normalizePhone(phone);
 
@@ -217,9 +214,6 @@ const Gatekeeper1Form: React.FC = () => {
 
       case 'WARN_CONFIRM': {
         let warningMessage: React.ReactNode;
-        const matchesList: CustomerRecord[] = Array.isArray(result.matches) ? result.matches : [];
-        const nearList: CustomerRecord[] = Array.isArray(result.near) ? result.near : [];
-
         if (result.reason === 'phone_exact_name_diff' || result.reason === 'phone_exact') {
           warningMessage = (
             <>
