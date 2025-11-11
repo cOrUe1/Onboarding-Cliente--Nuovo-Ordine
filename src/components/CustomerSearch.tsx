@@ -33,12 +33,12 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
 
     const query = { firstName, lastName, phone };
 
-    const hasFirstName = firstName.trim().length >= 2;
-    const hasLastName = lastName.trim().length >= 2;
-    const hasPhone = phone.replace(/\D/g, '').length >= 3;
+    const hasFirstName = firstName.trim().length >= 1;
+    const hasLastName = lastName.trim().length >= 1;
+    const hasPhone = phone.replace(/\D/g, '').length >= 1;
 
     if (!hasFirstName && !hasLastName && !hasPhone) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono." });
+      setMessage({ type: 'error', text: "Inserisci almeno 1 lettera per nome/cognome o 1 cifra per il telefono." });
       return;
     }
 
