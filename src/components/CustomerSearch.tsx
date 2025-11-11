@@ -104,8 +104,8 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
           onChange={(e) => setPhone(e.target.value)}
           className="input"
         />
-        <div className="flex flex-row flex-wrap items-center gap-2">
-          <Button onClick={handleSearch} disabled={loading} className="flex-1 min-w-[8rem]">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <Button onClick={handleSearch} disabled={loading} className="w-full sm:flex-1">
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -131,9 +131,9 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
           </Button>
           <Button
             onClick={handleClear}
-            variant="secondary"
+            variant="ghost"
             size="sm"
-            className="border border-black text-black hover:bg-black hover:text-white flex-none"
+            className="sm:w-auto self-end sm:self-auto"
             disabled={loading}
           >
             Pulisci
