@@ -104,11 +104,38 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
           onChange={(e) => setPhone(e.target.value)}
           className="input"
         />
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={handleSearch} disabled={loading} className="w-full btn">
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-search mr-2 h-4 w-4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Cerca</span>}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <Button onClick={handleSearch} disabled={loading} className="w-full sm:flex-1">
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <span className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="lucide lucide-search mr-2 h-4 w-4"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                Cerca
+              </span>
+            )}
           </Button>
-          <Button onClick={handleClear} variant="outline" className="w-full btn">
+          <Button
+            onClick={handleClear}
+            variant="ghost"
+            size="sm"
+            className="sm:w-auto self-end sm:self-auto"
+            disabled={loading}
+          >
             Pulisci
           </Button>
         </div>
