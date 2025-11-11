@@ -33,12 +33,12 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
 
     const query = { firstName, lastName, phone };
 
-    const hasFirstName = firstName.trim().length >= 2;
-    const hasLastName = lastName.trim().length >= 2;
-    const hasPhone = phone.replace(/\D/g, '').length >= 3;
+    const hasFirstName = firstName.trim().length >= 1;
+    const hasLastName = lastName.trim().length >= 1;
+    const hasPhone = phone.replace(/\D/g, '').length >= 1;
 
     if (!hasFirstName && !hasLastName && !hasPhone) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono." });
+      setMessage({ type: 'error', text: "Inserisci almeno 1 lettera per nome/cognome o 1 cifra per il telefono." });
       return;
     }
 
@@ -104,11 +104,38 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ onCustomerSelect }) => 
           onChange={(e) => setPhone(e.target.value)}
           className="input"
         />
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={handleSearch} disabled={loading} className="w-full btn">
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-search mr-2 h-4 w-4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Cerca</span>}
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          <Button onClick={handleSearch} disabled={loading} className="flex-1 min-w-[8rem]">
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <span className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="lucide lucide-search mr-2 h-4 w-4"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                Cerca
+              </span>
+            )}
           </Button>
-          <Button onClick={handleClear} variant="outline" className="w-full btn">
+          <Button
+            onClick={handleClear}
+            variant="secondary"
+            size="sm"
+            className="border border-black text-black hover:bg-black hover:text-white flex-none"
+            disabled={loading}
+          >
             Pulisci
           </Button>
         </div>

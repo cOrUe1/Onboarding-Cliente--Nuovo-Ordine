@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +28,9 @@ const Gatekeeper1Form: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [mode, setMode] = useState<FormMode>('new'); // 'new' for nuovo cliente, 'existing' for cliente esistente
   const [loading, setLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState<'search' | 'open' | null>(null);
   const [message, setMessage] = useState<{ type: 'info' | 'warning' | 'error'; text: string } | null>(null);
+  const [existingResults, setExistingResults] = useState<CustomerRecord[]>([]);
 
   // State per l'AlertDialog di conferma/avviso
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
@@ -48,33 +50,54 @@ const Gatekeeper1Form: React.FC = () => {
     setPhone("");
     setMode('new');
     setLoading(false);
+    setActiveAction(null);
     setMessage(null);
     setIsAlertDialogOpen(false);
     setAlertDialogContent(null);
+    setExistingResults([]);
   };
 
-  const validateInputs = () => {
-    const rawPhone = phone.trim();
-    const cleanedPhone = rawPhone.replace(/\D/g, '');
+  const normalizePhone = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, '');
+    if (digitsOnly.startsWith('39') && digitsOnly.length > 9) {
+      return digitsOnly.slice(2);
+    }
+    return digitsOnly;
+  };
+
+  const normalizeFullName = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+  const inputFullName = useMemo(
+    () => normalizeFullName(`${firstName} ${lastName}`),
+    [firstName, lastName],
+  );
+
+  const hasSearchCriteria = (normalizedPhone: string) => {
+    const hasFirstName = firstName.trim().length >= 1;
+    const hasLastName = lastName.trim().length >= 1;
+    return hasFirstName || hasLastName || normalizedPhone.length >= 1;
+  };
+
+  const hasAllRequiredFields = (normalizedPhone: string) => {
     const hasFirstName = firstName.trim().length >= 2;
     const hasLastName = lastName.trim().length >= 2;
+    return hasFirstName && hasLastName && normalizedPhone.length >= 3;
+  };
 
-    // Validazione combinata per nome/cognome/telefono
-    if (!hasFirstName && !hasLastName && cleanedPhone.length < 3) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono." });
+  const validateCommonInputs = (normalizedPhone: string) => {
+    const rawPhone = phone.trim();
+
+    if (!hasSearchCriteria(normalizedPhone)) {
+      setMessage({ type: 'error', text: "Inserisci almeno 1 lettera per nome/cognome o 1 cifra per il telefono." });
       return false;
     }
 
-    // Nuova validazione per il formato del numero di telefono
     if (rawPhone !== '') {
-      // Controlla se contiene solo caratteri validi per un numero di telefono
-      if (!/^[0-9\s\-\(\)\+]+$/.test(rawPhone)) {
+      if (!/^[0-9\s()+-]+$/.test(rawPhone)) {
         setMessage({ type: 'error', text: "Il numero di telefono può contenere solo numeri, spazi, trattini, parentesi e il segno più." });
         return false;
       }
-      // Controlla se ha almeno 3 cifre dopo la pulizia
-      if (cleanedPhone.length < 3) {
-        setMessage({ type: 'error', text: "Il numero di telefono deve contenere almeno 3 cifre." });
+      if (normalizedPhone.length < 1) {
+        setMessage({ type: 'error', text: "Il numero di telefono deve contenere almeno 1 cifra dopo la normalizzazione." });
         return false;
       }
     }
@@ -82,45 +105,202 @@ const Gatekeeper1Form: React.FC = () => {
     return true;
   };
 
+  const ensureAllFieldsForNew = (normalizedPhone: string) => {
+    if (!hasAllRequiredFields(normalizedPhone)) {
+      setMessage({
+        type: 'error',
+        text: "Per inserire un nuovo cliente compila nome, cognome e telefono (almeno 2 lettere e 3 cifre).",
+      });
+      return false;
+    }
+    return true;
+  };
+
   const handleSearch = async () => {
     setMessage(null);
+    setExistingResults([]);
 
-    if (!validateInputs()) return;
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!validateCommonInputs(normalizedPhone)) return;
 
     setLoading(true);
+    setActiveAction('search');
     try {
+      const payload = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: normalizedPhone,
+      };
+
       if (mode === 'new') {
-        const result = await checkDuplicate({ firstName, lastName, phone });
-        handleDuplicateCheckResult(result);
+        const result = await checkDuplicate(payload);
+        await handleDuplicateCheckResult(result, normalizedPhone, 'search');
       } else { // mode === 'existing'
-        const result = await resolveExisting({ firstName, lastName, phone });
-        handleResolveExistingResult(result);
+        const result = await resolveExisting(payload);
+        await handleResolveExistingResult(result, normalizedPhone, 'search');
       }
     } catch (error: any) {
       console.error("Errore durante la ricerca/risoluzione:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${error.message || 'Riprova più tardi.'}` });
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
   };
 
-  const handleDuplicateCheckResult = (result: any) => {
-    const cleanedPhone = phone.replace(/\D/g, '');
+  const handleOpenModule = async () => {
+    setMessage(null);
+
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!validateCommonInputs(normalizedPhone)) return;
+
+    if (mode === 'new' && !ensureAllFieldsForNew(normalizedPhone)) {
+      return;
+    }
+
+    setLoading(true);
+    setActiveAction('open');
+    try {
+      const payload = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: normalizedPhone,
+      };
+
+      if (mode === 'new') {
+        const result = await checkDuplicate(payload);
+        await handleDuplicateCheckResult(result, normalizedPhone, 'open');
+      } else {
+        const result = await resolveExisting(payload);
+        await handleResolveExistingResult(result, normalizedPhone, 'open');
+      }
+    } catch (error: any) {
+      console.error("Errore durante l'apertura del modulo:", error);
+      setMessage({ type: 'error', text: `Si è verificato un errore: ${error.message || 'Riprova più tardi.'}` });
+    } finally {
+      setLoading(false);
+      setActiveAction(null);
+    }
+  };
+
+  const collectPotentialHomonyms = (result: any, normalizedPhone: string) => {
+    const pools: CustomerRecord[] = [
+      ...(Array.isArray(result.matches) ? result.matches : []),
+      ...(Array.isArray(result.near) ? result.near : []),
+      ...(Array.isArray(result.nameNear) ? result.nameNear : []),
+    ];
+
+    const seen = new Map<string, CustomerRecord>();
+    pools.forEach((record) => {
+      const key = record.id || `${record.fullName}-${record.phone}`;
+      if (!seen.has(key)) {
+        seen.set(key, record);
+      }
+    });
+
+    const normalizedInputPhone = normalizedPhone;
+
+    return Array.from(seen.values()).filter((record) => {
+      const recordName = normalizeFullName(record.fullName || '');
+      const recordPhone = normalizePhone(record.phone || '');
+      const sameName = recordName.length > 0 && recordName === inputFullName;
+      const phoneDiffers = recordPhone !== '' && recordPhone !== normalizedInputPhone;
+      return sameName && phoneDiffers;
+    });
+  };
+
+  const handleDuplicateCheckResult = async (result: any, normalizedPhone: string, action: 'search' | 'open') => {
+    const homonyms = collectPotentialHomonyms(result, normalizedPhone);
+
+    if (homonyms.length > 0) {
+      const description = (
+        <>
+          <p className="mb-2">Attenzione: esiste già un cliente con lo stesso <strong>Nome e Cognome</strong> ma telefono differente.</p>
+          {homonyms.map((m: CustomerRecord) => (
+            <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" />
+                <p className="font-medium">{m.fullName}</p>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Phone className="h-4 w-4" />
+                <p>{m.phone}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+            </Card>
+          ))}
+          <p className="mt-3">Vuoi comunque procedere con l'inserimento come <strong>Nuovo cliente</strong>?</p>
+        </>
+      );
+
+      setAlertDialogContent({
+        title: "Possibile omonimia",
+        description,
+        confirmText: "Continua come nuovo cliente",
+        cancelText: "Annulla",
+        onConfirm: () => {
+          if (!ensureAllFieldsForNew(normalizedPhone)) {
+            setIsAlertDialogOpen(false);
+            return;
+          }
+          openForm('Sì', '', normalizedPhone);
+        },
+        onCancel: () => setIsAlertDialogOpen(false),
+        showCancel: true,
+      });
+      setIsAlertDialogOpen(true);
+      if (action === 'search') {
+        setMessage({ type: 'warning', text: "Abbiamo trovato un possibile omonimo. Conferma se vuoi inserire un nuovo cliente." });
+      }
+      return;
+    }
 
     switch (result.decision) {
-      case 'EXACT_SAME':
-        // Punto 1: Se Nome =, Cognome =, Numero= ---> Apri sempre il modulo come "Cliente esistente"
-        setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}). Apertura modulo per aggiornamento.` });
-        openForm('No', result.record.id, cleanedPhone);
+      case 'EXACT_SAME': {
+        if (result.record) {
+          setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}).` });
+          setAlertDialogContent({
+            title: "Cliente già presente",
+            description: (
+              <>
+                <p className="mb-2">Abbiamo trovato un cliente con gli stessi dati:</p>
+                <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <p className="font-medium">{result.record.fullName}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <p>{result.record.phone}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
+                </Card>
+                <p>Apri il modulo per aggiornarlo come <strong>Cliente esistente</strong>.</p>
+              </>
+            ),
+            confirmText: "Apri come cliente esistente",
+            cancelText: "Chiudi",
+            onConfirm: () => openForm('No', result.record.id, normalizedPhone),
+            onCancel: () => setIsAlertDialogOpen(false),
+            showCancel: true,
+          });
+          setIsAlertDialogOpen(true);
+        }
         break;
+      }
 
-      case 'WARN_CONFIRM':
+      case 'WARN_CONFIRM': {
         let warningMessage: React.ReactNode;
+        const matchesList: CustomerRecord[] = Array.isArray(result.matches) ? result.matches : [];
+        const nearList: CustomerRecord[] = Array.isArray(result.near) ? result.near : [];
+
         if (result.reason === 'phone_exact_name_diff' || result.reason === 'phone_exact') {
           warningMessage = (
             <>
-              <p className="mb-2">Attenzione: è stato trovato un cliente con un **numero di telefono IDENTICO** ma nome/cognome diversi:</p>
-              {result.matches.map((m: CustomerRecord) => (
+              <p className="mb-2">Attenzione: è stato trovato un cliente con un <strong>numero di telefono IDENTICO</strong> ma nome/cognome diversi:</p>
+              {matchesList.map((m: CustomerRecord) => (
                 <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-primary" />
@@ -133,14 +313,14 @@ const Gatekeeper1Form: React.FC = () => {
                   <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
                 </Card>
               ))}
-              <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente** con questo numero?</p>
+              <p className="mt-3">Sei sicuro di voler inserire un <strong>NUOVO cliente</strong> con questo numero?</p>
             </>
           );
         } else if (result.reason === 'phone_near') {
           warningMessage = (
             <>
-              <p className="mb-2">Attenzione: è stato trovato un cliente con un **numero di telefono SIMILE**:</p>
-              {result.matches.map((m: CustomerRecord) => (
+              <p className="mb-2">Attenzione: è stato trovato un cliente con un <strong>numero di telefono SIMILE</strong>:</p>
+              {matchesList.map((m: CustomerRecord) => (
                 <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-primary" />
@@ -153,20 +333,18 @@ const Gatekeeper1Form: React.FC = () => {
                   <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
                 </Card>
               ))}
-              <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
+              <p className="mt-3">Sei sicuro di voler inserire un <strong>NUOVO cliente</strong>?</p>
             </>
           );
         } else if (result.reason === 'name_near') {
-          console.log("DEBUG: result for name_near:", result); // Log per diagnostica
-          // Punto 2: Se Nome =, Cognome =, Numero!= ---> Avviso di omonimia
-          const exactNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist === 0);
-          const similarNameMatches = result.near.filter((m: CustomerRecord) => m.dist !== undefined && m.dist > 0);
+          const exactNameMatches = nearList.filter((m: CustomerRecord) => m.dist !== undefined && m.dist === 0);
+          const similarNameMatches = nearList.filter((m: CustomerRecord) => m.dist !== undefined && m.dist > 0);
 
           warningMessage = (
             <>
               {exactNameMatches.length > 0 && (
                 <>
-                  <p className="mb-2">Attenzione: è stata rilevata **omonimia** con il seguente cliente (nome e cognome identici, ma telefono diverso):</p>
+                  <p className="mb-2">Attenzione: è stata rilevata <strong>omonimia</strong> con il seguente cliente (nome e cognome identici, ma telefono diverso):</p>
                   {exactNameMatches.map((m: CustomerRecord) => (
                     <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
                       <div className="flex items-center gap-2">
@@ -184,7 +362,7 @@ const Gatekeeper1Form: React.FC = () => {
               )}
               {similarNameMatches.length > 0 && (
                 <>
-                  <p className="mb-2">Attenzione: è stato trovato un cliente con un **nome/cognome SIMILE**:</p>
+                  <p className="mb-2">Attenzione: è stato trovato un cliente con un <strong>nome/cognome SIMILE</strong>:</p>
                   {similarNameMatches.map((m: CustomerRecord) => (
                     <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
                       <div className="flex items-center gap-2">
@@ -195,126 +373,148 @@ const Gatekeeper1Form: React.FC = () => {
                         <Phone className="h-4 w-4" />
                         <p>{m.phone}</p>
                       </div>
-                      <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
+                      <p className="mt-3">Sei sicuro di voler inserire un <strong>NUOVO cliente</strong>?</p>
                     </Card>
                   ))}
                 </>
               )}
-              <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
+              <p className="mt-3">Sei sicuro di voler inserire un <strong>NUOVO cliente</strong>?</p>
             </>
           );
         } else {
-          warningMessage = <p>Sono state trovate delle corrispondenze. Sei sicuro di voler inserire un **NUOVO cliente**?</p>;
+          warningMessage = <p>Sono state trovate delle corrispondenze. Sei sicuro di voler inserire un <strong>NUOVO cliente</strong>?</p>;
         }
 
         setAlertDialogContent({
           title: "Conferma Inserimento Nuovo Cliente",
           description: warningMessage,
-          confirmText: "Sì, inserisci come NUOVO",
+          confirmText: "Apri come nuovo cliente",
           cancelText: "Annulla",
-          onConfirm: () => openForm('Sì', '', cleanedPhone),
+          onConfirm: () => {
+            if (!ensureAllFieldsForNew(normalizedPhone)) {
+              setIsAlertDialogOpen(false);
+              return;
+            }
+            openForm('Sì', '', normalizedPhone);
+          },
           onCancel: () => setIsAlertDialogOpen(false),
           showCancel: true,
         });
         setIsAlertDialogOpen(true);
+        if (action === 'search') {
+          setMessage({ type: 'warning', text: "Sono state trovate corrispondenze simili. Conferma prima di inserire un nuovo cliente." });
+        }
         break;
+      }
 
-      case 'OK':
-        setMessage({ type: 'info', text: "Nessun duplicato rilevante trovato. Puoi procedere con l'inserimento del nuovo cliente." });
-        openForm('Sì', '', cleanedPhone);
+      case 'OK': {
+        if (action === 'open') {
+          if (!ensureAllFieldsForNew(normalizedPhone)) {
+            return;
+          }
+          await openForm('Sì', '', normalizedPhone);
+        } else {
+          setMessage({ type: 'info', text: "Nessun duplicato rilevante trovato." });
+        }
         break;
+      }
     }
   };
 
-  const handleResolveExistingResult = (result: any) => {
-    const cleanedPhone = phone.replace(/\D/g, '');
+  const buildExistingResults = (result: any) => {
+    const buckets: CustomerRecord[] = [];
+    if (result.record) {
+      buckets.push(result.record);
+    }
+    if (Array.isArray(result.matches)) {
+      buckets.push(...result.matches);
+    }
+    if (Array.isArray(result.near)) {
+      buckets.push(...result.near);
+    }
+    if (Array.isArray(result.nameNear)) {
+      buckets.push(...result.nameNear);
+    }
+
+    const deduped = new Map<string, CustomerRecord>();
+    buckets.forEach((entry) => {
+      const key = entry.id || `${entry.fullName}-${entry.phone}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, entry);
+      }
+    });
+
+    return Array.from(deduped.values());
+  };
+
+  const handleResolveExistingResult = async (result: any, normalizedPhone: string, action: 'search' | 'open') => {
+    const aggregated = buildExistingResults(result);
+    setExistingResults(aggregated);
 
     if (result.found && result.record) {
-      setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}).` });
-      setAlertDialogContent({
-        title: "Cliente Trovato",
-        description: (
-          <>
-            <p className="mb-2">È stato trovato il seguente cliente:</p>
-            <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" />
-                <p className="font-medium">{result.record.fullName}</p>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="h-4 w-4" />
-                <p>{result.record.phone}</p>
-              </div>
-              <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
-            </Card>
-            <p>Vuoi aprire il modulo per **aggiornare questo cliente esistente**?</p>
-          </>
-        ),
-        confirmText: "Apri Modulo",
-        onConfirm: () => openForm('No', result.record.id, cleanedPhone),
-        showCancel: false,
-      });
-      setIsAlertDialogOpen(true);
+      if (action === 'open') {
+        await openForm('No', result.record.id, normalizedPhone);
+        return;
+      }
+
+      setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}). Seleziona un risultato per aprire il modulo.` });
     } else {
-      setMessage({ type: 'warning', text: result.suggestion || "Nessun cliente esistente trovato con i dati forniti." });
-      setAlertDialogContent({
-        title: "Cliente Non Trovato",
-        description: (
-          <>
-            <p className="mb-2">{result.suggestion || "Nessun cliente esistente trovato con i dati forniti."}</p>
-            {result.near.length > 0 && (
-              <>
-                <p className="mt-3 font-semibold">Telefoni simili:</p>
-                {result.near.map((m: CustomerRecord) => (
-                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
-                      <p className="font-medium">{m.fullName}</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Phone className="h-4 w-4" />
-                      <p>{m.phone}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
-                  </Card>
-                ))}
-              </>
-            )}
-            {result.nameNear.length > 0 && (
-              <>
-                <p className="mt-3 font-semibold">Nomi simili:</p>
-                {result.nameNear.map((m: CustomerRecord) => (
-                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
-                      <p className="font-medium">{m.fullName}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
-                  </Card>
-                ))}
-              </>
-            )}
-            <p className="mt-3">Vuoi comunque aprire il modulo per inserire un **NUOVO cliente**?</p>
-          </>
-        ),
-        confirmText: "Sì, inserisci come NUOVO",
-        cancelText: "Annulla",
-        onConfirm: () => openForm('Sì', '', cleanedPhone),
-        onCancel: () => setIsAlertDialogOpen(false),
-        showCancel: true,
-      });
-      setIsAlertDialogOpen(true);
+      if (aggregated.length === 0) {
+        setMessage({ type: 'warning', text: result.suggestion || "Nessun cliente esistente trovato con i dati forniti." });
+        if (action === 'open') {
+          setMessage({ type: 'error', text: "Nessun cliente esistente selezionabile. Compila più dati o inserisci come nuovo." });
+        }
+      } else {
+        setMessage({ type: 'warning', text: "Nessuna corrispondenza esatta. Seleziona il cliente più simile dall'elenco." });
+      }
     }
   };
 
-  const openForm = async (newCustomer: 'Sì' | 'No', customerId: string, cleanedPhone: string) => {
+  const handleExistingSelect = (record: CustomerRecord) => {
+    const normalizedRecordPhone = normalizePhone(record.phone || phone);
+    setAlertDialogContent({
+      title: "Apri cliente esistente",
+      description: (
+        <>
+          <p className="mb-2">Stai per aprire il modulo per il cliente:</p>
+          <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-primary" />
+              <p className="font-medium">{record.fullName}</p>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Phone className="h-4 w-4" />
+              <p>{record.phone}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">ID Cliente: {record.id}</p>
+          </Card>
+          <p>Confermi di volerlo aprire come <strong>Cliente esistente</strong>?</p>
+        </>
+      ),
+      confirmText: "Apri Modulo",
+      cancelText: "Annulla",
+      onConfirm: () => openForm('No', record.id, normalizedRecordPhone),
+      onCancel: () => setIsAlertDialogOpen(false),
+      showCancel: true,
+    });
+    setIsAlertDialogOpen(true);
+  };
+
+  useEffect(() => {
+    if (mode === 'new') {
+      setExistingResults([]);
+    }
+  }, [mode]);
+
+  const openForm = async (newCustomer: 'Sì' | 'No', customerId: string, normalizedPhone: string) => {
     setLoading(true);
+    setActiveAction('open');
     setMessage({ type: 'info', text: "Apertura modulo..." });
     try {
       const prefillUrl = await makePrefillUrlGK1({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        phone: cleanedPhone,
+        phone: normalizedPhone,
         newCustomer: newCustomer,
         customerId: customerId,
       });
@@ -335,6 +535,7 @@ const Gatekeeper1Form: React.FC = () => {
       setMessage({ type: 'error', text: `Impossibile aprire il modulo: ${error.message || 'Riprova.'}` });
     } finally {
       setLoading(false);
+      setActiveAction(null);
       setIsAlertDialogOpen(false); // Chiudi l'alert dialog dopo l'azione
     }
   };
@@ -390,14 +591,73 @@ const Gatekeeper1Form: React.FC = () => {
           </div>
         </RadioGroup>
 
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button onClick={handleSearch} disabled={loading} className="w-full btn">
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-search mr-2 h-4 w-4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Cerca / Apri Modulo</span>}
+        <div className="flex flex-row flex-wrap items-center gap-2">
+          <Button onClick={handleSearch} disabled={loading} className="flex-1 min-w-[8rem]">
+            {activeAction === 'search' && loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <span className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="lucide lucide-search mr-2 h-4 w-4"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                Cerca
+              </span>
+            )}
           </Button>
-          <Button onClick={resetForm} variant="outline" className="w-full btn" disabled={loading}>
+          <Button
+            onClick={resetForm}
+            variant="secondary"
+            size="sm"
+            className="border border-black text-black hover:bg-black hover:text-white flex-none"
+            disabled={loading}
+          >
             Pulisci
           </Button>
         </div>
+        <Button onClick={handleOpenModule} disabled={loading} className="w-full">
+          {activeAction === 'open' && loading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            "Apri Modulo"
+          )}
+        </Button>
+
+        {mode === 'existing' && existingResults.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold">Seleziona un cliente esistente</h3>
+            {existingResults.map((record) => (
+              <Card
+                key={record.id}
+                className="cursor-pointer transition-colors hover:bg-accent"
+                onClick={() => handleExistingSelect(record)}
+              >
+                <CardContent className="p-4 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <p className="font-medium">{record.fullName}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <p>{record.phone}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">ID Cliente: {record.id}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {message && (
           <Alert variant={message.type === 'error' ? 'destructive' : 'default'} className="mt-4" aria-live="polite">
