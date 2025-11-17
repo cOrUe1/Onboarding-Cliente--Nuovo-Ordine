@@ -48,14 +48,17 @@ interface PrefillUrlPayload {
 /**
  * Funzione generica per chiamare l'endpoint GAS del Modulo 1.
  */
-async function callGatekeeper1Api<T>(action: string, params: Record<string, string>): Promise<T> {
+async function callGatekeeper1Api<T>(action: string, params: Record<string, string | undefined>): Promise<T> {
   if (!GK1.GAS_ENDPOINT_URL || GK1.GAS_ENDPOINT_URL === "INCOLLA_QUI_IL_NUOVO_WEB_APP_URL_COPIATO_DAL_DEPLOYMENT_MODULO1") {
     throw new Error("L'URL dell'endpoint di Google Apps Script per il Modulo 1 non è configurato. Aggiorna src/lib/constants.ts");
   }
 
-  const urlParams = new URLSearchParams({
-    action,
-    ...params,
+  const urlParams = new URLSearchParams({ action });
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      urlParams.append(key, value);
+    }
   });
 
   const response = await fetch(`${GK1.GAS_ENDPOINT_URL}?${urlParams.toString()}`);
