@@ -14,6 +14,12 @@ interface CheckDuplicatePayload {
   phone: string;
 }
 
+interface ResolveExistingPayload {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+}
+
 interface CheckDuplicateResponse {
   decision: 'EXACT_SAME' | 'WARN_CONFIRM' | 'OK';
   reason?: 'phone_exact_name_diff' | 'phone_exact' | 'phone_near' | 'name_near' | 'clear';
@@ -77,12 +83,17 @@ export const checkDuplicate = async (payload: CheckDuplicatePayload): Promise<Ch
 /**
  * Risolve un cliente esistente.
  */
-export const resolveExisting = async (payload: CheckDuplicatePayload): Promise<ResolveExistingResponse> => {
-  return callGatekeeper1Api<ResolveExistingResponse>("resolveExisting", {
+export const resolveExisting = async (payload: ResolveExistingPayload): Promise<ResolveExistingResponse> => {
+  const params: Record<string, string> = {
     firstName: payload.firstName,
     lastName: payload.lastName,
-    phone: payload.phone,
-  });
+  };
+
+  if (payload.phone && payload.phone.length >= 3) {
+    params.phone = payload.phone;
+  }
+
+  return callGatekeeper1Api<ResolveExistingResponse>("resolveExisting", params);
 };
 
 /**
