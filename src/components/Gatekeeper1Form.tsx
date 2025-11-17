@@ -213,19 +213,12 @@ const Gatekeeper1Form: React.FC = () => {
           warningMessage = (
             <>
               <p className="mb-2">Attenzione: è stato trovato un cliente con un **numero di telefono SIMILE**:</p>
-              {result.matches.map((m: CustomerRecord) => (
-                <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-primary" />
-                    <p className="font-medium">{m.fullName}</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    <p>{m.phone}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
-                </Card>
-              ))}
+              {result.matches.map((m: CustomerRecord) =>
+                renderCustomerCard(m, {
+                  footnote: 'Numero molto simile',
+                  fallbackPhone: cleanedPhone,
+                })
+              )}
               <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
             </>
           );
@@ -240,37 +233,23 @@ const Gatekeeper1Form: React.FC = () => {
               {exactNameMatches.length > 0 && (
                 <>
                   <p className="mb-2">Attenzione: è stata rilevata **omonimia** con il seguente cliente (nome e cognome identici, ma telefono diverso):</p>
-                  {exactNameMatches.map((m: CustomerRecord) => (
-                    <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-primary" />
-                        <p className="font-medium">{m.fullName}</p>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Phone className="h-4 w-4" />
-                        <p>{m.phone}</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
-                    </Card>
-                  ))}
+                  {exactNameMatches.map((m: CustomerRecord) =>
+                    renderCustomerCard(m, {
+                      footnote: 'Nome e cognome identici',
+                      fallbackPhone: cleanedPhone,
+                    })
+                  )}
                 </>
               )}
               {similarNameMatches.length > 0 && (
                 <>
                   <p className="mb-2">Attenzione: è stato trovato un cliente con un **nome/cognome SIMILE**:</p>
-                  {similarNameMatches.map((m: CustomerRecord) => (
-                    <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-primary" />
-                        <p className="font-medium">{m.fullName}</p>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Phone className="h-4 w-4" />
-                        <p>{m.phone}</p>
-                      </div>
-                      <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
-                    </Card>
-                  ))}
+                  {similarNameMatches.map((m: CustomerRecord) =>
+                    renderCustomerCard(m, {
+                      footnote: 'Nome simile a quello inserito',
+                      fallbackPhone: cleanedPhone,
+                    })
+                  )}
                 </>
               )}
               <p className="mt-3">Sei sicuro di voler inserire un **NUOVO cliente**?</p>
@@ -486,8 +465,51 @@ const Gatekeeper1Form: React.FC = () => {
         onCancel: () => setIsAlertDialogOpen(false),
         showCancel: true,
       });
-      setIsAlertDialogOpen(true);
-    }
+      if (uniqueRecords.length === 0) return null;
+      return (
+        <React.Fragment key={`${title ?? 'records'}-${seenIds.size}`}>
+          {title && <p className="mt-2 font-semibold">{title}</p>}
+          {uniqueRecords.map((record) =>
+            renderCustomerCard(record, {
+              footnote,
+              fallbackPhone: cleanedPhone,
+            })
+          )}
+        </React.Fragment>
+      );
+    };
+
+    setAlertDialogContent({
+      title: dialogTitle,
+      description: (
+        <>
+          {hasResults ? (
+            <>
+              <p className="mb-2">
+                {context === 'newPartial'
+                  ? 'Prima di inserire un nuovo cliente verifica che non sia già presente. Clicca su un nominativo per aprire il modulo precompilato.'
+                  : 'Clicca su un cliente per aprire il modulo precompilato.'}
+              </p>
+              {renderSection('Cliente trovato', result.found && result.record ? [result.record] : undefined)}
+              {renderSection('Corrispondenze dirette', result.matches)}
+              {renderSection('Telefoni simili', result.near, 'Numero simile a quello inserito')}
+              {renderSection('Nomi simili', result.nameNear, 'Nome simile a quello inserito')}
+            </>
+          ) : (
+            <>
+              <p>{baseNoResultMessage}</p>
+              {context === 'newPartial' && (
+                <p className="mt-2 text-sm text-muted-foreground">Compila Nome, Cognome e Telefono per inserire un nuovo cliente.</p>
+              )}
+            </>
+          )}
+        </>
+      ),
+      confirmText: 'Chiudi',
+      onConfirm: () => setIsAlertDialogOpen(false),
+      showCancel: false,
+    });
+    setIsAlertDialogOpen(true);
   };
 
   const openForm = async (newCustomer: 'Sì' | 'No', customerId: string, cleanedPhone: string) => {
