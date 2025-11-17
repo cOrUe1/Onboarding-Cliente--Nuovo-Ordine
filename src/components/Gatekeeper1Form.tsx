@@ -64,41 +64,6 @@ const Gatekeeper1Form: React.FC = () => {
     setAlertDialogContent(null);
   };
 
-  const handleExistingSelection = (record: CustomerRecord, fallbackPhone?: string) => {
-    if (!record) return;
-    const resolvedPhone = record.phone ? normalizePhone(record.phone) : fallbackPhone || normalizePhone(phone);
-    openForm('No', record.id, resolvedPhone);
-  };
-
-  const renderCustomerCard = (
-    record: CustomerRecord,
-    options: { footnote?: React.ReactNode; fallbackPhone?: string } = {}
-  ) => {
-    if (!record) return null;
-    return (
-      <button
-        key={record.id}
-        type="button"
-        onClick={() => handleExistingSelection(record, options.fallbackPhone)}
-        className="w-full text-left rounded-lg border border-border bg-gray-50 dark:bg-gray-700 p-3 mb-2 transition hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <div className="flex items-center gap-2">
-          <User className="h-4 w-4 text-primary" />
-          <p className="font-medium">{record.fullName}</p>
-        </div>
-        {record.phone && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-            <Phone className="h-4 w-4" />
-            <p>{record.phone}</p>
-          </div>
-        )}
-        <p className="text-xs text-muted-foreground mt-1">ID Cliente: {record.id}</p>
-        {options.footnote && <p className="text-xs text-muted-foreground mt-2">{options.footnote}</p>}
-        <p className="text-xs text-primary mt-2">Clicca per usare questo cliente</p>
-      </button>
-    );
-  };
-
   const validateInputs = (intent: 'search' | 'open-new' | 'open-existing') => {
     const rawPhone = phone.trim();
     const cleanedPhone = normalizePhone(phone);
@@ -141,12 +106,7 @@ const Gatekeeper1Form: React.FC = () => {
   const triggerExistingLookup = async (context: 'search' | 'existing' | 'newPartial') => {
     setLoading(true);
     try {
-      const cleanedPhone = normalizePhone(phone);
-      const result = await resolveExisting({
-        firstName,
-        lastName,
-        phone: cleanedPhone.length >= MIN_PHONE_DIGITS ? cleanedPhone : undefined,
-      });
+      const result = await resolveExisting({ firstName, lastName, phone: normalizePhone(phone) });
       handleResolveExistingResult(result, context);
     } catch (error: any) {
       console.error("Errore durante la ricerca/risoluzione:", error);
@@ -204,7 +164,17 @@ const Gatekeeper1Form: React.FC = () => {
           description: (
             <>
               <p className="mb-2">Il cliente inserito risulta già in elenco con gli stessi dati:</p>
-              {renderCustomerCard(result.record, { footnote: 'Seleziona per aprire il modulo come cliente esistente', fallbackPhone: cleanedPhone })}
+              <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-primary" />
+                  <p className="font-medium">{result.record.fullName}</p>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="h-4 w-4" />
+                  <p>{result.record.phone}</p>
+                </div>
+                <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
+              </Card>
               <p>Vuoi aprire il modulo come <strong>cliente esistente</strong>?</p>
             </>
           ),
@@ -223,12 +193,19 @@ const Gatekeeper1Form: React.FC = () => {
           warningMessage = (
             <>
               <p className="mb-2">Attenzione: esiste già un cliente con lo stesso numero di telefono:</p>
-              {result.matches.map((m: CustomerRecord) =>
-                renderCustomerCard(m, {
-                  footnote: 'Clicca per aprire questo cliente',
-                  fallbackPhone: cleanedPhone,
-                })
-              )}
+              {result.matches.map((m: CustomerRecord) => (
+                <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <p className="font-medium">{m.fullName}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <p>{m.phone}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                </Card>
+              ))}
               <p className="mt-3">Vuoi aprire il modulo come <strong>cliente esistente</strong>?</p>
             </>
           );
@@ -317,44 +294,176 @@ const Gatekeeper1Form: React.FC = () => {
 
   const handleResolveExistingResult = (result: any, context: 'search' | 'existing' | 'newPartial' = 'existing') => {
     const cleanedPhone = normalizePhone(phone);
-    const hasResults = result.found || result.matches.length > 0 || result.near.length > 0 || result.nameNear.length > 0;
 
-    const baseNoResultMessage =
-      context === 'newPartial'
-        ? 'Nessun cliente trovato. Compila tutti i campi per inserirne uno nuovo.'
-        : result.suggestion || 'Nessun cliente simile trovato con i dati inseriti.';
+    if (context !== 'existing') {
+      const hasResults = result.found || result.matches.length > 0 || result.near.length > 0 || result.nameNear.length > 0;
+      setMessage({
+        type: hasResults ? 'info' : 'warning',
+        text:
+          context === 'newPartial'
+            ? 'Per aprire un nuovo cliente servono tutti i campi compilati. Abbiamo cercato possibili clienti simili.'
+            : hasResults
+              ? 'Ecco i clienti trovati con i dati inseriti.'
+              : 'Nessun cliente simile trovato con i dati inseriti.',
+      });
 
-    const informativeMessage =
-      context === 'newPartial'
-        ? hasResults
-          ? 'Abbiamo trovato clienti simili. Seleziona quello corretto oppure compila tutti i campi per inserirne uno nuovo.'
-          : baseNoResultMessage
-        : hasResults
-          ? 'Ecco i clienti trovati con i dati inseriti.'
-          : baseNoResultMessage;
+      setAlertDialogContent({
+        title: context === 'newPartial' ? 'Completa i dati prima di creare un nuovo cliente' : 'Risultati della ricerca',
+        description: (
+          <>
+            {!hasResults && <p className="mb-2">Non sono stati trovati clienti corrispondenti.</p>}
+            {result.found && result.record && (
+              <>
+                <p className="mb-2">Cliente trovato:</p>
+                <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <p className="font-medium">{result.record.fullName}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <p>{result.record.phone}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
+                </Card>
+              </>
+            )}
+            {result.matches.length > 0 && (
+              <>
+                <p className="mt-2 font-semibold">Corrispondenze dirette:</p>
+                {result.matches.map((m: CustomerRecord) => (
+                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{m.fullName}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-4 w-4" />
+                      <p>{m.phone}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                  </Card>
+                ))}
+              </>
+            )}
+            {result.near.length > 0 && (
+              <>
+                <p className="mt-2 font-semibold">Telefoni simili:</p>
+                {result.near.map((m: CustomerRecord) => (
+                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{m.fullName}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-4 w-4" />
+                      <p>{m.phone}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                  </Card>
+                ))}
+              </>
+            )}
+            {result.nameNear.length > 0 && (
+              <>
+                <p className="mt-2 font-semibold">Nomi simili:</p>
+                {result.nameNear.map((m: CustomerRecord) => (
+                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{m.fullName}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                  </Card>
+                ))}
+              </>
+            )}
+            {context === 'newPartial' && (
+              <p className="mt-4 text-sm text-muted-foreground">Compila tutti i campi e riprova per aprire il modulo di un nuovo cliente.</p>
+            )}
+          </>
+        ),
+        confirmText: "Chiudi",
+        onConfirm: () => setIsAlertDialogOpen(false),
+        showCancel: false,
+      });
+      setIsAlertDialogOpen(true);
+      return;
+    }
 
-    setMessage({
-      type: hasResults ? 'info' : 'warning',
-      text: informativeMessage,
-    });
-
-    const dialogTitle = (() => {
-      if (context === 'newPartial') {
-        return hasResults ? 'Cliente forse già presente' : 'Completa i dati per inserirne uno nuovo';
-      }
-      if (context === 'existing') {
-        return hasResults ? 'Seleziona il cliente esistente' : 'Cliente non trovato';
-      }
-      return hasResults ? 'Risultati della ricerca' : 'Cliente non trovato';
-    })();
-
-    const seenIds = new Set<string>();
-    const renderSection = (title: string | null, records?: CustomerRecord[], footnote?: string) => {
-      if (!records || records.length === 0) return null;
-      const uniqueRecords = records.filter((record) => {
-        if (!record || seenIds.has(record.id)) return false;
-        seenIds.add(record.id);
-        return true;
+    if (result.found && result.record) {
+      setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}).` });
+      setAlertDialogContent({
+        title: "Cliente Trovato",
+        description: (
+          <>
+            <p className="mb-2">È stato trovato il seguente cliente:</p>
+            <Card className="p-3 mb-3 bg-gray-50 dark:bg-gray-700">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" />
+                <p className="font-medium">{result.record.fullName}</p>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Phone className="h-4 w-4" />
+                <p>{result.record.phone}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
+            </Card>
+            <p>Vuoi aprire il modulo per **aggiornare questo cliente esistente**?</p>
+          </>
+        ),
+        confirmText: "Apri Modulo",
+        onConfirm: () => openForm('No', result.record.id, cleanedPhone),
+        showCancel: false,
+      });
+      setIsAlertDialogOpen(true);
+    } else {
+      setMessage({ type: 'warning', text: result.suggestion || "Nessun cliente esistente trovato con i dati forniti." });
+      setAlertDialogContent({
+        title: "Cliente Non Trovato",
+        description: (
+          <>
+            <p className="mb-2">{result.suggestion || "Nessun cliente esistente trovato con i dati forniti."}</p>
+            {result.near.length > 0 && (
+              <>
+                <p className="mt-3 font-semibold">Telefoni simili:</p>
+                {result.near.map((m: CustomerRecord) => (
+                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{m.fullName}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-4 w-4" />
+                      <p>{m.phone}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                  </Card>
+                ))}
+              </>
+            )}
+            {result.nameNear.length > 0 && (
+              <>
+                <p className="mt-3 font-semibold">Nomi simili:</p>
+                {result.nameNear.map((m: CustomerRecord) => (
+                  <Card key={m.id} className="p-3 mb-2 bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      <p className="font-medium">{m.fullName}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">ID Cliente: {m.id}</p>
+                  </Card>
+                ))}
+              </>
+            )}
+            <p className="mt-3">Vuoi comunque aprire il modulo per inserire un **NUOVO cliente**?</p>
+          </>
+        ),
+        confirmText: "Sì, inserisci come NUOVO",
+        cancelText: "Annulla",
+        onConfirm: () => openForm('Sì', '', cleanedPhone),
+        onCancel: () => setIsAlertDialogOpen(false),
+        showCancel: true,
       });
       if (uniqueRecords.length === 0) return null;
       return (
