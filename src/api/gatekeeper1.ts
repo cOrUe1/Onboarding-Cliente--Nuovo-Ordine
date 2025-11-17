@@ -15,8 +15,8 @@ interface CheckDuplicatePayload {
 }
 
 interface ResolveExistingPayload {
-  firstName?: string;
-  lastName?: string;
+  firstName: string;
+  lastName: string;
   phone?: string;
 }
 
@@ -87,7 +87,7 @@ export const checkDuplicate = async (payload: CheckDuplicatePayload): Promise<Ch
  * Risolve un cliente esistente.
  */
 export const resolveExisting = async (payload: ResolveExistingPayload): Promise<ResolveExistingResponse> => {
-  const params: Record<string, string | undefined> = {
+  const params: Record<string, string> = {
     firstName: payload.firstName,
     lastName: payload.lastName,
   };
