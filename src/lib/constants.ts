@@ -19,6 +19,6 @@ export const GK1 = {
     newCustomer:'entry.1264387969', // ID campo "Nuovo cliente?"
     customerId: 'entry.1434715647'  // ID campo "ID Cliente"
   },
-  GAS_ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbz_J0STeS34Is07Q2ewS0HgE5Gw1PgsrTCCxQ44I96cTlVo8wOjdXiGVAUIhzY8hoZo/exec", // <--- INCOLLA QUI IL NUOVO URL DEL TUO NUOVO DEPLOYMENT PER MODULO 1
+  GAS_ENDPOINT_URL: "https://script.google.com/macros/s/AKfycbwb1lJdDA37L00S1AARd4a0hZQ5Go-B3Ow-LEEvuP21hbI7rH7ALC1bxCJawAgwZyAW/exec", // <--- INCOLLA QUI IL NUOVO URL DEL TUO NUOVO DEPLOYMENT PER MODULO 1
   CACHE_SECONDS: 60,
 };
