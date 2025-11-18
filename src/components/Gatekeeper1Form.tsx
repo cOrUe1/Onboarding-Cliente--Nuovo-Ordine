@@ -86,6 +86,7 @@ const Gatekeeper1Form: React.FC = () => {
   const hasPhone = cleanedPhone.length >= 3;
   const hasAnySearchableField = hasFirstName || hasLastName || hasPhone;
   const hasAllRequiredFields = hasFirstName && hasLastName && hasPhone;
+  const getPhoneForLookup = () => (hasPhone ? cleanedPhone : "000");
 
   const validatePhoneCharacters = () => {
     if (rawPhone === "") return true;
@@ -138,15 +139,17 @@ const Gatekeeper1Form: React.FC = () => {
       if (mode === 'new') {
         const shouldResolveExisting = !hasAllRequiredFields;
         if (shouldResolveExisting) {
-          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleResolveExistingResult(result, 'search', cleanedPhone);
+          const lookupPhone = getPhoneForLookup();
+          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+          handleResolveExistingResult(result, 'search', lookupPhone);
         } else {
           const result = await checkDuplicate({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
           handleDuplicateCheckResult(result, 'search', cleanedPhone);
         }
       } else {
-        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-        handleResolveExistingResult(result, 'search', cleanedPhone);
+        const lookupPhone = getPhoneForLookup();
+        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+        handleResolveExistingResult(result, 'search', lookupPhone);
       }
     } catch (error: unknown) {
       console.error("Errore durante la ricerca/risoluzione:", error);
@@ -181,8 +184,9 @@ const Gatekeeper1Form: React.FC = () => {
   const resolveExistingFlow = async (intent: LookupIntent) => {
     startLoading(intent === 'search' ? 'search' : 'open');
     try {
-      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-      handleResolveExistingResult(result, intent, cleanedPhone);
+      const lookupPhone = getPhoneForLookup();
+      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+      handleResolveExistingResult(result, intent, lookupPhone);
     } catch (error: unknown) {
       console.error("Errore durante la ricerca del cliente esistente:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${extractErrorMessage(error)}` });
