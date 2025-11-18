@@ -86,7 +86,6 @@ const Gatekeeper1Form: React.FC = () => {
   const hasPhone = cleanedPhone.length >= 3;
   const hasAnySearchableField = hasFirstName || hasLastName || hasPhone;
   const hasAllRequiredFields = hasFirstName && hasLastName && hasPhone;
-  const getPhoneForLookup = () => (hasPhone ? cleanedPhone : "000");
 
   const validatePhoneCharacters = () => {
     if (rawPhone === "") return true;
@@ -137,19 +136,16 @@ const Gatekeeper1Form: React.FC = () => {
     startLoading('search');
     try {
       if (mode === 'new') {
-        const shouldResolveExisting = !hasAllRequiredFields;
-        if (shouldResolveExisting) {
-          const lookupPhone = getPhoneForLookup();
-          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
-          handleResolveExistingResult(result, 'search', lookupPhone);
+        if (!hasAllRequiredFields) {
+          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
+          handleResolveExistingResult(result, 'search', cleanedPhone, { allowNewInsertion: false });
         } else {
           const result = await checkDuplicate({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
           handleDuplicateCheckResult(result, 'search', cleanedPhone);
         }
       } else {
-        const lookupPhone = getPhoneForLookup();
-        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
-        handleResolveExistingResult(result, 'search', lookupPhone);
+        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
+        handleResolveExistingResult(result, 'search', cleanedPhone);
       }
     } catch (error: unknown) {
       console.error("Errore durante la ricerca/risoluzione:", error);
@@ -168,7 +164,11 @@ const Gatekeeper1Form: React.FC = () => {
         setMessage({ type: 'warning', text: "Inserisci almeno uno dei tre campi per aprire il modulo di un cliente esistente." });
         return;
       }
-      await resolveExistingFlow('open');
+      const allowNewAfterLookup = hasAllRequiredFields;
+      await resolveExistingFlow('open', allowNewAfterLookup);
+      if (!allowNewAfterLookup) {
+        setMessage((prev) => prev ?? { type: 'warning', text: "Per inserire un nuovo cliente compila Nome, Cognome e Telefono." });
+      }
       return;
     }
 
@@ -181,12 +181,11 @@ const Gatekeeper1Form: React.FC = () => {
     await duplicateCheckFlow('open');
   };
 
-  const resolveExistingFlow = async (intent: LookupIntent) => {
+  const resolveExistingFlow = async (intent: LookupIntent, allowNewInsertion = true) => {
     startLoading(intent === 'search' ? 'search' : 'open');
     try {
-      const lookupPhone = getPhoneForLookup();
-      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
-      handleResolveExistingResult(result, intent, lookupPhone);
+      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
+      handleResolveExistingResult(result, intent, cleanedPhone, { allowNewInsertion });
     } catch (error: unknown) {
       console.error("Errore durante la ricerca del cliente esistente:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${extractErrorMessage(error)}` });
@@ -384,7 +383,13 @@ const Gatekeeper1Form: React.FC = () => {
     }
   };
 
-  const handleResolveExistingResult = (result: ResolveExistingResult, intent: LookupIntent, normalizedPhone: string) => {
+  const handleResolveExistingResult = (
+    result: ResolveExistingResult,
+    intent: LookupIntent,
+    normalizedPhone: string,
+    options?: { allowNewInsertion?: boolean }
+  ) => {
+    const allowNewInsertion = options?.allowNewInsertion ?? true;
     const matches = result.matches ?? [];
     const near = result.near ?? [];
     const nameNear = result.nameNear ?? [];
@@ -459,6 +464,10 @@ const Gatekeeper1Form: React.FC = () => {
     }
 
     setMessage({ type: 'warning', text: result.suggestion || "Nessun cliente esistente trovato con i dati forniti." });
+    if (!allowNewInsertion) {
+      setMessage({ type: 'warning', text: "Completa Nome, Cognome e Telefono per inserire un nuovo cliente." });
+      return;
+    }
     setAlertDialogContent({
       title: "Cliente Non Trovato",
       description: (
