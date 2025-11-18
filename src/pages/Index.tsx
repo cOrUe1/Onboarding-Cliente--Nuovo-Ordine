@@ -1,6 +1,6 @@
 "use client";
 
-import Gatekeeper1Form from "@/components/Gatekeeper1Form";
+import CustomerOrderFlow from "@/components/CustomerOrderFlow";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 
 const Index = () => {
@@ -18,7 +18,7 @@ const Index = () => {
         </p>
       </div>
 
-      <Gatekeeper1Form />
+      <CustomerOrderFlow />
       <MadeWithDyad />
     </div>
   );

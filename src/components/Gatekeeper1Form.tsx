@@ -4,32 +4,31 @@ import React, { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Loader2, Info, TriangleAlert, CircleX, User, Phone, Search, ExternalLink } from "lucide-react";
-import { checkDuplicate, resolveExisting, makePrefillUrlGK1 } from "@/api/gatekeeper1";
+import { Loader2, Info, TriangleAlert, CircleX, User, Phone, ExternalLink, ArrowLeft } from "lucide-react";
+import { checkDuplicate, makePrefillUrlGK1 } from "@/api/gatekeeper1";
 import { showSuccess, showError } from "@/utils/toast";
 
 interface CustomerRecord {
   id: string;
   fullName: string;
   phone: string;
-  nameDist?: number; // Distanza di Levenshtein per il nome
-  dist?: number; // Distanza di Levenshtein per il telefono
+  nameDist?: number;
+  dist?: number;
 }
 
-type FormMode = 'new' | 'existing';
+interface Gatekeeper1FormProps {
+  onBack: () => void;
+  onSuggestSearch: () => void;
+}
 
-const Gatekeeper1Form: React.FC = () => {
+const Gatekeeper1Form: React.FC<Gatekeeper1FormProps> = ({ onBack, onSuggestSearch }) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
-  const [mode, setMode] = useState<FormMode>('new');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'warning' | 'error'; text: string } | null>(null);
-  const [customerSearchResults, setCustomerSearchResults] = useState<CustomerRecord[]>([]);
 
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
   const [alertDialogContent, setAlertDialogContent] = useState<{
@@ -46,29 +45,14 @@ const Gatekeeper1Form: React.FC = () => {
     setFirstName("");
     setLastName("");
     setPhone("");
-    setMode('new');
     setLoading(false);
     setMessage(null);
-    setCustomerSearchResults([]);
     setIsAlertDialogOpen(false);
     setAlertDialogContent(null);
   };
 
   const normalizePhone = (inputPhone: string) => {
-    return inputPhone.replace(/\D/g, ''); // Rimuove tutti i non-numeri
-  };
-
-  const validateInputForSearch = () => {
-    const cleanedPhone = normalizePhone(phone);
-    const hasFirstName = firstName.trim().length >= 2;
-    const hasLastName = lastName.trim().length >= 2;
-    const hasPhone = cleanedPhone.length >= 3;
-
-    if (!hasFirstName && !hasLastName && !hasPhone) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono per la ricerca." });
-      return false;
-    }
-    return true;
+    return inputPhone.replace(/\D/g, '');
   };
 
   const validateInputForNewCustomerForm = () => {
@@ -78,11 +62,10 @@ const Gatekeeper1Form: React.FC = () => {
     const hasPhone = cleanedPhone.length >= 3;
 
     if (!hasFirstName || !hasLastName || !hasPhone) {
-      setMessage({ type: 'error', text: "Per inserire un NUOVO cliente, tutti i campi (Nome, Cognome, Telefono) devono essere compilati con almeno 2 lettere/3 cifre." });
+      setMessage({ type: 'warning', text: "Per inserire un NUOVO cliente, tutti i campi (Nome, Cognome, Telefono) devono essere compilati con almeno 2 lettere/3 cifre. Altrimenti, prova a cercarlo." });
       return false;
     }
 
-    // Nuova validazione per il formato del numero di telefono
     if (phone.trim() !== '' && !/^[0-9\s\-\(\)\+]+$/.test(phone.trim())) {
       setMessage({ type: 'error', text: "Il numero di telefono può contenere solo numeri, spazi, trattini, parentesi e il segno più." });
       return false;
@@ -91,44 +74,28 @@ const Gatekeeper1Form: React.FC = () => {
     return true;
   };
 
-  const handleSearchCustomers = async () => {
-    setMessage(null);
-    setCustomerSearchResults([]);
-
-    if (!validateInputForSearch()) return;
-
-    setLoading(true);
-    setMessage({ type: 'info', text: "Ricerca clienti in corso…" });
-    try {
-      const result = await resolveExisting({ firstName, lastName, phone: normalizePhone(phone) });
-      const allMatches = [
-        ...(result.matches || []),
-        ...(result.near || []),
-        ...(result.nameNear || []),
-      ].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Rimuovi duplicati
-
-      setCustomerSearchResults(allMatches);
-
-      if (allMatches.length === 0) {
-        setMessage({ type: 'info', text: "Nessun cliente affine trovato. Puoi procedere con l'inserimento di un nuovo cliente." });
-      } else {
-        setMessage({ type: 'info', text: `Trovati ${allMatches.length} clienti affini.` });
-      }
-    } catch (error: any) {
-      console.error("Errore durante la ricerca clienti:", error);
-      setMessage({ type: 'error', text: `Si è verificato un errore durante la ricerca: ${error.message || 'Riprova più tardi.'}` });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleOpenNewCustomerForm = async () => {
     setMessage(null);
-    setCustomerSearchResults([]);
 
     if (!validateInputForNewCustomerForm()) {
-      // Se i campi non sono tutti compilati, esegui una ricerca invece di aprire il modulo
-      handleSearchCustomers();
+      setAlertDialogContent({
+        title: "Campi Incompleti",
+        description: (
+          <>
+            <p className="mb-2">Per inserire un NUOVO cliente, tutti i campi (Nome, Cognome, Telefono) devono essere compilati con almeno 2 lettere/3 cifre.</p>
+            <p>Vuoi procedere con una ricerca per vedere se il cliente esiste già?</p>
+          </>
+        ),
+        confirmText: "Sì, cerca cliente",
+        cancelText: "Annulla",
+        onConfirm: () => {
+          setIsAlertDialogOpen(false);
+          onSuggestSearch();
+        },
+        onCancel: () => setIsAlertDialogOpen(false),
+        showCancel: true,
+      });
+      setIsAlertDialogOpen(true);
       return;
     }
 
@@ -262,7 +229,7 @@ const Gatekeeper1Form: React.FC = () => {
             onCancel: () => setIsAlertDialogOpen(false),
             showCancel: true,
           });
-        } else { // phone_near or other generic WARN_CONFIRM
+        } else {
           warningMessage = (
             <>
               <p className="mb-2">Sono state trovate delle corrispondenze con i dati inseriti. Sei sicuro di voler inserire un **NUOVO cliente**?</p>
@@ -347,12 +314,15 @@ const Gatekeeper1Form: React.FC = () => {
     }
   };
 
-  const isNewCustomerFormReady = validateInputForNewCustomerForm();
-
   return (
     <Card className="w-full max-w-md mx-auto shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-center text-xl md:text-2xl">Inserisci un Cliente o Ordine</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <Button variant="ghost" size="icon" onClick={onBack} className="btn">
+          <ArrowLeft className="h-5 w-5" />
+          <span className="sr-only">Indietro</span>
+        </Button>
+        <CardTitle className="text-center text-xl md:text-2xl flex-grow">Inserisci Nuovo Cliente/Ordine</CardTitle>
+        <div className="w-10"></div>
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <Input
@@ -380,27 +350,10 @@ const Gatekeeper1Form: React.FC = () => {
           disabled={loading}
         />
 
-        <RadioGroup value={mode} onValueChange={(value: FormMode) => { setMode(value); setCustomerSearchResults([]); setMessage(null); }} className="flex gap-4 justify-center">
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="new" id="mode-new" disabled={loading} />
-            <Label htmlFor="mode-new">Nuovo cliente</Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="existing" id="mode-existing" disabled={loading} />
-            <Label htmlFor="mode-existing">Cliente esistente</Label>
-          </div>
-        </RadioGroup>
-
         <div className="flex flex-col sm:flex-row gap-2">
-          {mode === 'new' && isNewCustomerFormReady ? (
-            <Button onClick={handleOpenNewCustomerForm} disabled={loading} className="w-full btn">
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><ExternalLink className="mr-2 h-4 w-4" />Apri Modulo (Nuovo)</span>}
-            </Button>
-          ) : (
-            <Button onClick={handleSearchCustomers} disabled={loading} className="w-full btn">
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><Search className="mr-2 h-4 w-4" />Cerca Clienti</span>}
-            </Button>
-          )}
+          <Button onClick={handleOpenNewCustomerForm} disabled={loading} className="w-full btn">
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <span className="flex items-center"><ExternalLink className="mr-2 h-4 w-4" />Apri Modulo</span>}
+          </Button>
           <Button onClick={resetForm} variant="ghost" className="w-full btn" disabled={loading}>
             Pulisci
           </Button>
@@ -412,40 +365,6 @@ const Gatekeeper1Form: React.FC = () => {
             <AlertTitle>{message.type === 'error' ? 'Errore' : message.type === 'warning' ? 'Attenzione' : 'Info'}</AlertTitle>
             <AlertDescription>{message.text}</AlertDescription>
           </Alert>
-        )}
-
-        {customerSearchResults.length > 0 && (
-          <div className="space-y-2 mt-4">
-            <h3 className="text-lg font-semibold">Risultati Ricerca Clienti:</h3>
-            {customerSearchResults.map((customer) => (
-              <Card
-                key={customer.id}
-                className="p-2"
-              >
-                <CardContent className="p-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
-                      <p className="font-medium">{customer.fullName}</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Phone className="h-4 w-4" />
-                      <p>{customer.phone}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground">ID Cliente: {customer.id}</p>
-                  </div>
-                  <Button onClick={() => openForm('No', customer.id, normalizePhone(customer.phone))} className="btn flex-shrink-0">
-                    Apri Modulo (Esistente) <ExternalLink className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-            {mode === 'new' && (
-              <Button onClick={() => openForm('Sì', '', normalizePhone(phone))} className="w-full btn mt-4">
-                Apri Modulo (Nuovo Cliente) <ExternalLink className="ml-2 h-4 w-4" />
-              </Button>
-            )}
-          </div>
         )}
 
         <AlertDialog open={isAlertDialogOpen} onOpenChange={setIsAlertDialogOpen}>
