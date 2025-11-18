@@ -79,18 +79,6 @@ const Gatekeeper1Form: React.FC = () => {
     return digitsOnly;
   };
 
-  const splitFullName = (fullName: string) => {
-    const parts = fullName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) {
-      return { firstName: "", lastName: "" };
-    }
-    const [first, ...rest] = parts;
-    return {
-      firstName: first,
-      lastName: rest.join(" "),
-    };
-  };
-
   const rawPhone = phone.trim();
   const cleanedPhone = normalizePhone(phone);
   const hasFirstName = firstName.trim().length >= 2;
@@ -98,6 +86,7 @@ const Gatekeeper1Form: React.FC = () => {
   const hasPhone = cleanedPhone.length >= 3;
   const hasAnySearchableField = hasFirstName || hasLastName || hasPhone;
   const hasAllRequiredFields = hasFirstName && hasLastName && hasPhone;
+  const getPhoneForLookup = () => (hasPhone ? cleanedPhone : "000");
 
   const validatePhoneCharacters = () => {
     if (rawPhone === "") return true;
@@ -110,19 +99,6 @@ const Gatekeeper1Form: React.FC = () => {
       return false;
     }
     return true;
-  };
-
-  const handleOpenExistingFromMatch = (record: CustomerRecord) => {
-    const { firstName: recordFirst, lastName: recordLast } = splitFullName(record.fullName);
-    if (recordFirst) setFirstName(recordFirst);
-    if (recordLast) setLastName(recordLast);
-    if (record.phone) setPhone(record.phone);
-    setMode('existing');
-    openForm('No', record.id, {
-      firstName: recordFirst || firstName,
-      lastName: recordLast || lastName,
-      phone: record.phone || phone,
-    });
   };
 
   const ensureSearchableInputs = () => {
@@ -161,16 +137,19 @@ const Gatekeeper1Form: React.FC = () => {
     startLoading('search');
     try {
       if (mode === 'new') {
-        if (!hasAllRequiredFields) {
-          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleResolveExistingResult(result, 'search', cleanedPhone);
+        const shouldResolveExisting = !hasAllRequiredFields;
+        if (shouldResolveExisting) {
+          const lookupPhone = getPhoneForLookup();
+          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+          handleResolveExistingResult(result, 'search', lookupPhone);
         } else {
           const result = await checkDuplicate({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
           handleDuplicateCheckResult(result, 'search', cleanedPhone);
         }
       } else {
-        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-        handleResolveExistingResult(result, 'search', cleanedPhone);
+        const lookupPhone = getPhoneForLookup();
+        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+        handleResolveExistingResult(result, 'search', lookupPhone);
       }
     } catch (error: unknown) {
       console.error("Errore durante la ricerca/risoluzione:", error);
@@ -205,8 +184,9 @@ const Gatekeeper1Form: React.FC = () => {
   const resolveExistingFlow = async (intent: LookupIntent) => {
     startLoading(intent === 'search' ? 'search' : 'open');
     try {
-      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-      handleResolveExistingResult(result, intent, cleanedPhone);
+      const lookupPhone = getPhoneForLookup();
+      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: lookupPhone });
+      handleResolveExistingResult(result, intent, lookupPhone);
     } catch (error: unknown) {
       console.error("Errore durante la ricerca del cliente esistente:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${extractErrorMessage(error)}` });
@@ -250,7 +230,6 @@ const Gatekeeper1Form: React.FC = () => {
     }
 
     setMatchSections(sections);
-    const hasMatchSections = sections.length > 0;
 
     switch (result.decision) {
       case 'EXACT_SAME':
@@ -282,7 +261,7 @@ const Gatekeeper1Form: React.FC = () => {
           ),
           confirmText: "Apri come Cliente esistente",
           cancelText: "Annulla",
-          onConfirm: () => openForm('No', result.record?.id || '', { phone: normalizedPhone }),
+          onConfirm: () => openForm('No', result.record?.id || '', normalizedPhone),
           onCancel: () => setIsAlertDialogOpen(false),
           showCancel: true,
         });
@@ -325,7 +304,7 @@ const Gatekeeper1Form: React.FC = () => {
             cancelText: "Annulla",
             onConfirm: () => {
               const existingId = matchList[0]?.id || '';
-              openForm('No', existingId, { phone: normalizedPhone });
+              openForm('No', existingId, normalizedPhone);
             },
             onCancel: () => setIsAlertDialogOpen(false),
             showCancel: true,
@@ -386,7 +365,7 @@ const Gatekeeper1Form: React.FC = () => {
           description: warningMessage,
           confirmText: "Sì, inserisci come NUOVO",
           cancelText: "Annulla",
-          onConfirm: () => openForm('Sì', '', { phone: normalizedPhone }),
+          onConfirm: () => openForm('Sì', '', normalizedPhone),
           onCancel: () => setIsAlertDialogOpen(false),
           showCancel: true,
         });
@@ -396,22 +375,11 @@ const Gatekeeper1Form: React.FC = () => {
 
       case 'OK':
         if (intent === 'search' || intent === 'partial-new') {
-          setMessage({
-            type: hasMatchSections ? 'warning' : 'info',
-            text: hasMatchSections
-              ? "Attenzione: ci sono nominativi simili. Verifica l'elenco prima di procedere con un nuovo inserimento."
-              : "Nessun duplicato rilevato. Puoi procedere con un nuovo inserimento.",
-          });
+          setMessage({ type: 'info', text: "Nessun duplicato rilevato. Puoi procedere con un nuovo inserimento." });
           return;
         }
-
-        setMessage({
-          type: hasMatchSections ? 'warning' : 'info',
-          text: hasMatchSections
-            ? "Sono stati trovati clienti simili. Verifica l'elenco prima di confermare l'inserimento come nuovo."
-            : "Nessun duplicato rilevante trovato. Apertura del modulo nuovo cliente.",
-        });
-        openForm('Sì', '', { phone: normalizedPhone });
+        setMessage({ type: 'info', text: "Nessun duplicato rilevante trovato. Apertura del modulo nuovo cliente." });
+        openForm('Sì', '', normalizedPhone);
         return;
     }
   };
@@ -483,7 +451,7 @@ const Gatekeeper1Form: React.FC = () => {
           </>
         ),
         confirmText: "Apri Modulo",
-        onConfirm: () => openForm('No', result.record.id, { phone: normalizedPhone }),
+        onConfirm: () => openForm('No', result.record.id, normalizedPhone),
         showCancel: false,
       });
       setIsAlertDialogOpen(true);
@@ -501,28 +469,21 @@ const Gatekeeper1Form: React.FC = () => {
       ),
       confirmText: "Sì, inserisci come NUOVO",
       cancelText: "Annulla",
-      onConfirm: () => openForm('Sì', '', { phone: normalizedPhone }),
+      onConfirm: () => openForm('Sì', '', normalizedPhone),
       onCancel: () => setIsAlertDialogOpen(false),
       showCancel: true,
     });
     setIsAlertDialogOpen(true);
   };
 
-  const openForm = async (
-    newCustomer: 'Sì' | 'No',
-    customerId: string,
-    overrides?: { firstName?: string; lastName?: string; phone?: string }
-  ) => {
+  const openForm = async (newCustomer: 'Sì' | 'No', customerId: string, cleanedPhone: string) => {
     setLoading(true);
     setMessage({ type: 'info', text: "Apertura modulo..." });
     try {
-      const payloadFirstName = (overrides?.firstName ?? firstName).trim();
-      const payloadLastName = (overrides?.lastName ?? lastName).trim();
-      const payloadPhone = normalizePhone(overrides?.phone ?? phone);
       const prefillUrl = await makePrefillUrlGK1({
-        firstName: payloadFirstName,
-        lastName: payloadLastName,
-        phone: payloadPhone,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: cleanedPhone,
         newCustomer: newCustomer,
         customerId: customerId,
       });
@@ -653,30 +614,16 @@ const Gatekeeper1Form: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   {section.items.map((item) => (
-                    <Card key={`${section.title}-${item.id}`} className="p-3 bg-gray-50 dark:bg-gray-800 space-y-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-primary" />
-                          <p className="font-medium">{item.fullName}</p>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                          <Phone className="h-4 w-4" />
-                          <p>{item.phone || "N/D"}</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">ID Cliente: {item.id}</p>
+                    <Card key={`${section.title}-${item.id}`} className="p-3 bg-gray-50 dark:bg-gray-800">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-primary" />
+                        <p className="font-medium">{item.fullName}</p>
                       </div>
-                      {item.id && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          onClick={() => handleOpenExistingFromMatch(item)}
-                          disabled={loading}
-                        >
-                          Apri modulo cliente
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                        <Phone className="h-4 w-4" />
+                        <p>{item.phone || "N/D"}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">ID Cliente: {item.id}</p>
                     </Card>
                   ))}
                 </div>
