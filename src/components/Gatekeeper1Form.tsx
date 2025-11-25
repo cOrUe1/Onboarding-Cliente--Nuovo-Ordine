@@ -261,7 +261,10 @@ const Gatekeeper1Form: React.FC = () => {
           ),
           confirmText: "Apri come Cliente esistente",
           cancelText: "Annulla",
-          onConfirm: () => openForm('No', result.record?.id || '', normalizedPhone),
+          onConfirm: () => {
+            const recordPhone = result.record?.phone ? normalizePhoneNumber(result.record.phone) : normalizedPhone;
+            openForm('No', result.record?.id || '', recordPhone);
+          },
           onCancel: () => setIsAlertDialogOpen(false),
           showCancel: true,
         });
@@ -304,7 +307,8 @@ const Gatekeeper1Form: React.FC = () => {
             cancelText: "Annulla",
             onConfirm: () => {
               const existingId = matchList[0]?.id || '';
-              openForm('No', existingId, normalizedPhone);
+              const recordPhone = matchList[0]?.phone ? normalizePhoneNumber(matchList[0].phone) : normalizedPhone;
+              openForm('No', existingId, recordPhone);
             },
             onCancel: () => setIsAlertDialogOpen(false),
             showCancel: true,
@@ -423,13 +427,24 @@ const Gatekeeper1Form: React.FC = () => {
     if (intent === 'search' || intent === 'partial-new') {
       const total = matches.length + near.length + nameNear.length;
       if (total === 0) {
-        setMessage({ type: 'info', text: "Nessun cliente affine trovato." });
+        // Mostra il suggerimento dal backend se disponibile, altrimenti messaggio generico
+        const messageText = result.suggestion || "Nessun cliente affine trovato.";
+        setMessage({ type: 'info', text: messageText });
       } else {
+        // Mostra il suggerimento dal backend se disponibile e più specifico, altrimenti messaggio generico
+        const backendMessage = result.suggestion;
+        const shouldUseBackendMessage = backendMessage && 
+          (backendMessage.includes('Esistono già clienti') || 
+           backendMessage.includes('trovati nomi simili') ||
+           backendMessage.includes('nome'));
+        
         setMessage({
           type: intent === 'partial-new' ? 'warning' : 'info',
-          text: intent === 'partial-new'
-            ? "Completa tutti i campi e verifica i clienti simili prima di inserire un nuovo record."
-            : `Trovati ${total} clienti compatibili. Usa 'Apri Modulo' per gestirli.`,
+          text: shouldUseBackendMessage
+            ? backendMessage
+            : intent === 'partial-new'
+              ? "Completa tutti i campi e verifica i clienti simili prima di inserire un nuovo record."
+              : `Trovati ${total} clienti compatibili. Usa 'Apri Modulo' per gestirli.`,
         });
       }
       return;
@@ -437,6 +452,10 @@ const Gatekeeper1Form: React.FC = () => {
 
     if (result.found && result.record) {
       setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}).` });
+      // Usa il telefono dal record trovato se disponibile, altrimenti quello inserito
+      // Normalizza il telefono dal record prima di usarlo
+      const phoneFromRecord = result.record.phone ? normalizePhoneNumber(result.record.phone) : '';
+      const phoneToUse = phoneFromRecord || normalizedPhone;
       setAlertDialogContent({
         title: "Cliente Trovato",
         description: (
@@ -449,7 +468,7 @@ const Gatekeeper1Form: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4" />
-                <p>{result.record.phone}</p>
+                <p>{result.record.phone || "N/D"}</p>
               </div>
               <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
             </Card>
@@ -457,7 +476,7 @@ const Gatekeeper1Form: React.FC = () => {
           </>
         ),
         confirmText: "Apri Modulo",
-        onConfirm: () => openForm('No', result.record.id, normalizedPhone),
+        onConfirm: () => openForm('No', result.record.id, phoneToUse),
         showCancel: false,
       });
       setIsAlertDialogOpen(true);
