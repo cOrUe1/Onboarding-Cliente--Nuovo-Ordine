@@ -12,6 +12,8 @@ import { Loader2, Info, TriangleAlert, CircleX, User, Phone } from "lucide-react
 import { checkDuplicate, resolveExisting, makePrefillUrlGK1 } from "@/api/gatekeeper1";
 import { showSuccess, showError } from "@/utils/toast";
 import { normalizeName, normalizePhone as normalizePhoneNumber } from "@/lib/utils";
+import OrderList from "@/components/OrderList";
+import { getOrders } from "@/api/gatekeeper";
 
 interface CustomerRecord {
   id: string;
@@ -43,6 +45,11 @@ const Gatekeeper1Form: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'info' | 'warning' | 'error'; text: string } | null>(null);
   const [matchSections, setMatchSections] = useState<MatchSection[]>([]);
   const [activeAction, setActiveAction] = useState<'search' | 'open' | null>(null);
+  
+  // State per gestire la visualizzazione degli ordini
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
+  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [showOrderList, setShowOrderList] = useState(false);
 
   // State per l'AlertDialog di conferma/avviso
   const [isAlertDialogOpen, setIsAlertDialogOpen] = useState(false);
@@ -67,6 +74,52 @@ const Gatekeeper1Form: React.FC = () => {
     setAlertDialogContent(null);
     setMatchSections([]);
     setActiveAction(null);
+    setSelectedCustomer(null);
+    setCustomerOrders([]);
+    setShowOrderList(false);
+  };
+
+  // Gestisce il click su un cliente dai risultati della ricerca
+  const handleCustomerClick = async (customer: CustomerRecord) => {
+    try {
+      setLoading(true);
+      setMessage({ type: 'info', text: "Verifica ordini..." });
+      
+      // Estrai l'ID base (rimuovi eventuale suffisso _XX)
+      const baseId = customer.id.replace(/_\d+$/, '');
+      
+      // Estrai nome e cognome dal fullName
+      const nameParts = customer.fullName.split(' ');
+      const customerFirstName = nameParts[0] || '';
+      const customerLastName = nameParts.slice(1).join(' ') || '';
+      
+      // Verifica se ha ordini multipli chiamando getOrders
+      const orders = await getOrders(baseId);
+      
+      if (orders && orders.length > 1) {
+        // Se ha più di un ordine, mostra OrderList
+        setCustomerOrders(orders);
+        setSelectedCustomer(customer);
+        setShowOrderList(true);
+        setMessage(null);
+      } else {
+        // Se ha 0 o 1 ordine, apri direttamente il modulo come cliente esistente
+        const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
+        // Usa l'ID base (senza suffisso) e i dati del cliente per aprire il modulo
+        await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
+      }
+    } catch (error) {
+      console.error("Errore durante il recupero degli ordini:", error);
+      // In caso di errore, apri comunque il modulo come cliente esistente
+      const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
+      const baseId = customer.id.replace(/_\d+$/, '');
+      const nameParts = customer.fullName.split(' ');
+      const customerFirstName = nameParts[0] || '';
+      const customerLastName = nameParts.slice(1).join(' ') || '';
+      await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const normalizePhone = (value: string) => {
@@ -82,11 +135,16 @@ const Gatekeeper1Form: React.FC = () => {
 
   const rawPhone = phone.trim();
   const cleanedPhone = normalizePhone(phone);
-  const hasFirstName = firstName.trim().length >= 2;
-  const hasLastName = lastName.trim().length >= 2;
-  const hasPhone = cleanedPhone.length >= 3;
+  // Per la ricerca, accettiamo anche solo 1 carattere/numero
+  const hasFirstName = firstName.trim().length >= 1;
+  const hasLastName = lastName.trim().length >= 1;
+  const hasPhone = cleanedPhone.length >= 1;
+  // Per il prefill completo, manteniamo i requisiti più stringenti
+  const hasFirstNameComplete = firstName.trim().length >= 2;
+  const hasLastNameComplete = lastName.trim().length >= 2;
+  const hasPhoneComplete = cleanedPhone.length >= 3;
   const hasAnySearchableField = hasFirstName || hasLastName || hasPhone;
-  const hasAllRequiredFields = hasFirstName && hasLastName && hasPhone;
+  const hasAllRequiredFields = hasFirstNameComplete && hasLastNameComplete && hasPhoneComplete;
 
   const validatePhoneCharacters = () => {
     if (rawPhone === "") return true;
@@ -94,16 +152,14 @@ const Gatekeeper1Form: React.FC = () => {
       setMessage({ type: 'error', text: "Il numero di telefono può contenere solo numeri, spazi, trattini, parentesi e il segno più." });
       return false;
     }
-    if (cleanedPhone.length > 0 && cleanedPhone.length < 3) {
-      setMessage({ type: 'error', text: "Il numero di telefono deve contenere almeno 3 cifre." });
-      return false;
-    }
+    // Rimuoviamo il controllo sulla lunghezza minima per la ricerca
     return true;
   };
 
   const ensureSearchableInputs = () => {
+    // L'unico caso in cui non facciamo ricerca è quando tutti i campi sono vuoti
     if (!hasAnySearchableField) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono." });
+      setMessage({ type: 'error', text: "Inserisci almeno un carattere in uno dei campi per effettuare la ricerca." });
       return false;
     }
     return validatePhoneCharacters();
@@ -136,18 +192,10 @@ const Gatekeeper1Form: React.FC = () => {
 
     startLoading('search');
     try {
-      if (mode === 'new') {
-        if (!hasAllRequiredFields) {
-          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleResolveExistingResult(result, 'search', cleanedPhone, { allowNewInsertion: false });
-        } else {
-          const result = await checkDuplicate({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleDuplicateCheckResult(result, 'search', cleanedPhone);
-        }
-      } else {
-        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-        handleResolveExistingResult(result, 'search', cleanedPhone);
-      }
+      // Per il tasto "Cerca", usiamo sempre resolveExisting che è più elastico
+      // e restituisce risultati ordinati per somiglianza
+      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
+      handleResolveExistingResult(result, 'search', cleanedPhone, { allowNewInsertion: true });
     } catch (error: unknown) {
       console.error("Errore durante la ricerca/risoluzione:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${extractErrorMessage(error)}` });
@@ -261,7 +309,10 @@ const Gatekeeper1Form: React.FC = () => {
           ),
           confirmText: "Apri come Cliente esistente",
           cancelText: "Annulla",
-          onConfirm: () => openForm('No', result.record?.id || '', normalizedPhone),
+          onConfirm: () => {
+            const recordPhone = result.record?.phone ? normalizePhoneNumber(result.record.phone) : normalizedPhone;
+            openForm('No', result.record?.id || '', recordPhone);
+          },
           onCancel: () => setIsAlertDialogOpen(false),
           showCancel: true,
         });
@@ -304,7 +355,8 @@ const Gatekeeper1Form: React.FC = () => {
             cancelText: "Annulla",
             onConfirm: () => {
               const existingId = matchList[0]?.id || '';
-              openForm('No', existingId, normalizedPhone);
+              const recordPhone = matchList[0]?.phone ? normalizePhoneNumber(matchList[0].phone) : normalizedPhone;
+              openForm('No', existingId, recordPhone);
             },
             onCancel: () => setIsAlertDialogOpen(false),
             showCancel: true,
@@ -423,13 +475,26 @@ const Gatekeeper1Form: React.FC = () => {
     if (intent === 'search' || intent === 'partial-new') {
       const total = matches.length + near.length + nameNear.length;
       if (total === 0) {
-        setMessage({ type: 'info', text: "Nessun cliente affine trovato." });
+        // Mostra il suggerimento dal backend se disponibile, altrimenti messaggio generico
+        const messageText = result.suggestion || "Nessun cliente affine trovato. Puoi procedere con un nuovo inserimento.";
+        setMessage({ type: 'info', text: messageText });
       } else {
+        // I risultati sono già ordinati per somiglianza dal backend (più simili in cima)
+        // Mostra un messaggio informativo con il numero di risultati trovati
+        const totalText = total === 1 ? 'cliente' : 'clienti';
+        const backendMessage = result.suggestion;
+        const shouldUseBackendMessage = backendMessage && 
+          (backendMessage.includes('Esistono già clienti') || 
+           backendMessage.includes('trovati nomi simili') ||
+           backendMessage.includes('nome'));
+        
         setMessage({
           type: intent === 'partial-new' ? 'warning' : 'info',
-          text: intent === 'partial-new'
-            ? "Completa tutti i campi e verifica i clienti simili prima di inserire un nuovo record."
-            : `Trovati ${total} clienti compatibili. Usa 'Apri Modulo' per gestirli.`,
+          text: shouldUseBackendMessage
+            ? `${backendMessage} Trovati ${total} ${totalText} compatibili (ordinati per somiglianza).`
+            : intent === 'partial-new'
+              ? `Completa tutti i campi e verifica i ${total} ${totalText} simili trovati prima di inserire un nuovo record.`
+              : `Trovati ${total} ${totalText} compatibili (ordinati per somiglianza).`,
         });
       }
       return;
@@ -437,6 +502,10 @@ const Gatekeeper1Form: React.FC = () => {
 
     if (result.found && result.record) {
       setMessage({ type: 'info', text: `Cliente esistente trovato: ${result.record.fullName} (${result.record.phone}).` });
+      // Usa il telefono dal record trovato se disponibile, altrimenti quello inserito
+      // Normalizza il telefono dal record prima di usarlo
+      const phoneFromRecord = result.record.phone ? normalizePhoneNumber(result.record.phone) : '';
+      const phoneToUse = phoneFromRecord || normalizedPhone;
       setAlertDialogContent({
         title: "Cliente Trovato",
         description: (
@@ -449,7 +518,7 @@ const Gatekeeper1Form: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4" />
-                <p>{result.record.phone}</p>
+                <p>{result.record.phone || "N/D"}</p>
               </div>
               <p className="text-sm text-muted-foreground">ID Cliente: {result.record.id}</p>
             </Card>
@@ -457,7 +526,7 @@ const Gatekeeper1Form: React.FC = () => {
           </>
         ),
         confirmText: "Apri Modulo",
-        onConfirm: () => openForm('No', result.record.id, normalizedPhone),
+        onConfirm: () => openForm('No', result.record.id, phoneToUse),
         showCancel: false,
       });
       setIsAlertDialogOpen(true);
@@ -484,6 +553,62 @@ const Gatekeeper1Form: React.FC = () => {
       showCancel: true,
     });
     setIsAlertDialogOpen(true);
+  };
+
+  const openFormWithCustomerData = async (
+    newCustomer: 'Sì' | 'No', 
+    customerId: string, 
+    cleanedPhone: string,
+    customerFirstName?: string,
+    customerLastName?: string
+  ) => {
+    setLoading(true);
+    setMessage({ type: 'info', text: "Apertura modulo..." });
+    try {
+      // Usa i dati del cliente se forniti, altrimenti usa quelli del form
+      const firstNameToUse = customerFirstName || firstName;
+      const lastNameToUse = customerLastName || lastName;
+      
+      // Normalizza i dati prima di passarli al prefill
+      const normalizedFirstName = normalizeName(firstNameToUse);
+      const normalizedLastName = normalizeName(lastNameToUse);
+      const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+      
+      // Verifica che dopo la normalizzazione i nomi non siano vuoti
+      if (normalizedFirstName.length === 0 && firstNameToUse.trim().length > 0) {
+        throw new Error("Il nome contiene solo caratteri non validi. Inserisci un nome con almeno 2 lettere.");
+      }
+      if (normalizedLastName.length === 0 && lastNameToUse.trim().length > 0) {
+        throw new Error("Il cognome contiene solo caratteri non validi. Inserisci un cognome con almeno 2 lettere.");
+      }
+      
+      const prefillUrl = await makePrefillUrlGK1({
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        phone: normalizedPhone,
+        newCustomer: newCustomer,
+        customerId: customerId,
+      });
+
+      if (prefillUrl) {
+        if (window.top) {
+          window.top.location.assign(prefillUrl);
+        } else {
+          window.location.assign(prefillUrl);
+        }
+        showSuccess("Modulo aperto con successo!");
+      } else {
+        throw new Error("URL precompilato non generato.");
+      }
+    } catch (error: unknown) {
+      console.error("Errore durante la generazione o l'apertura dell'URL del modulo:", error);
+      const errMessage = extractErrorMessage(error);
+      showError(`Impossibile aprire il modulo: ${errMessage}`);
+      setMessage({ type: 'error', text: `Impossibile aprire il modulo: ${errMessage}` });
+    } finally {
+      setLoading(false);
+      setIsAlertDialogOpen(false);
+    }
   };
 
   const openForm = async (newCustomer: 'Sì' | 'No', customerId: string, cleanedPhone: string) => {
@@ -544,6 +669,38 @@ const Gatekeeper1Form: React.FC = () => {
 
   const isSearchLoading = loading && activeAction === 'search';
   const isOpenLoading = loading && activeAction === 'open';
+
+  // Se stiamo mostrando OrderList, mostriamo quello invece del form
+  if (showOrderList && selectedCustomer) {
+    return (
+      <OrderList
+        customer={{
+          customerKey: selectedCustomer.id.replace(/_\d+$/, ''),
+          fullName: selectedCustomer.fullName,
+          phones: selectedCustomer.phone ? [selectedCustomer.phone] : [],
+          ordersCount: customerOrders.length
+        }}
+        onBack={() => {
+          setShowOrderList(false);
+          setSelectedCustomer(null);
+          setCustomerOrders([]);
+        }}
+        onNewOrder={async () => {
+          // Apri nuovo ordine per questo cliente come cliente esistente
+          // Estrai nome e cognome dal fullName
+          const nameParts = selectedCustomer.fullName.split(' ');
+          const customerFirstName = nameParts[0] || '';
+          const customerLastName = nameParts.slice(1).join(' ') || '';
+          
+          const phoneFromRecord = selectedCustomer.phone ? normalizePhoneNumber(selectedCustomer.phone) : cleanedPhone;
+          const baseId = selectedCustomer.id.replace(/_\d+$/, '');
+          
+          // Usa i dati del cliente per aprire il modulo
+          await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
+        }}
+      />
+    );
+  }
 
   return (
     <Card className="w-full max-w-md mx-auto shadow-lg">
@@ -638,7 +795,11 @@ const Gatekeeper1Form: React.FC = () => {
                 </div>
                 <div className="space-y-2">
                   {section.items.map((item) => (
-                    <Card key={`${section.title}-${item.id}`} className="p-3 bg-gray-50 dark:bg-gray-800">
+                    <Card 
+                      key={`${section.title}-${item.id}`} 
+                      className="p-3 bg-gray-50 dark:bg-gray-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      onClick={() => handleCustomerClick(item)}
+                    >
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-primary" />
                         <p className="font-medium">{item.fullName}</p>
