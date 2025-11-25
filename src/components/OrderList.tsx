@@ -22,9 +22,10 @@ interface Order {
 interface OrderListProps {
   customer: Customer;
   onBack: () => void;
+  onNewOrder?: () => void;
 }
 
-const OrderList: React.FC<OrderListProps> = ({ customer, onBack }) => {
+const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'warning' | 'error'; text: string } | null>(null);
@@ -134,6 +135,14 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack }) => {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {onNewOrder && (
+          <div className="mt-4 pt-4 border-t">
+            <Button onClick={onNewOrder} className="w-full btn">
+              Nuovo Ordine per {customer.fullName} <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
           </div>
         )}
       </CardContent>
