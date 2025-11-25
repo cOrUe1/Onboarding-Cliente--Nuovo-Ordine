@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Loader2, Info, TriangleAlert, CircleX, User, Phone } from "lucide-react";
 import { checkDuplicate, resolveExisting, makePrefillUrlGK1 } from "@/api/gatekeeper1";
 import { showSuccess, showError } from "@/utils/toast";
+import { normalizeName, normalizePhone as normalizePhoneNumber } from "@/lib/utils";
 
 interface CustomerRecord {
   id: string;
@@ -489,10 +490,24 @@ const Gatekeeper1Form: React.FC = () => {
     setLoading(true);
     setMessage({ type: 'info', text: "Apertura modulo..." });
     try {
+      // Normalizza i dati prima di passarli al prefill
+      const normalizedFirstName = normalizeName(firstName);
+      const normalizedLastName = normalizeName(lastName);
+      const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+      
+      // Verifica che dopo la normalizzazione i nomi non siano vuoti
+      // (questo può accadere se l'input conteneva solo numeri o caratteri speciali)
+      if (normalizedFirstName.length === 0 && firstName.trim().length > 0) {
+        throw new Error("Il nome contiene solo caratteri non validi. Inserisci un nome con almeno 2 lettere.");
+      }
+      if (normalizedLastName.length === 0 && lastName.trim().length > 0) {
+        throw new Error("Il cognome contiene solo caratteri non validi. Inserisci un cognome con almeno 2 lettere.");
+      }
+      
       const prefillUrl = await makePrefillUrlGK1({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: cleanedPhone,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        phone: normalizedPhone,
         newCustomer: newCustomer,
         customerId: customerId,
       });
