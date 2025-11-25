@@ -82,11 +82,16 @@ const Gatekeeper1Form: React.FC = () => {
 
   const rawPhone = phone.trim();
   const cleanedPhone = normalizePhone(phone);
-  const hasFirstName = firstName.trim().length >= 2;
-  const hasLastName = lastName.trim().length >= 2;
-  const hasPhone = cleanedPhone.length >= 3;
+  // Per la ricerca, accettiamo anche solo 1 carattere/numero
+  const hasFirstName = firstName.trim().length >= 1;
+  const hasLastName = lastName.trim().length >= 1;
+  const hasPhone = cleanedPhone.length >= 1;
+  // Per il prefill completo, manteniamo i requisiti più stringenti
+  const hasFirstNameComplete = firstName.trim().length >= 2;
+  const hasLastNameComplete = lastName.trim().length >= 2;
+  const hasPhoneComplete = cleanedPhone.length >= 3;
   const hasAnySearchableField = hasFirstName || hasLastName || hasPhone;
-  const hasAllRequiredFields = hasFirstName && hasLastName && hasPhone;
+  const hasAllRequiredFields = hasFirstNameComplete && hasLastNameComplete && hasPhoneComplete;
 
   const validatePhoneCharacters = () => {
     if (rawPhone === "") return true;
@@ -94,16 +99,14 @@ const Gatekeeper1Form: React.FC = () => {
       setMessage({ type: 'error', text: "Il numero di telefono può contenere solo numeri, spazi, trattini, parentesi e il segno più." });
       return false;
     }
-    if (cleanedPhone.length > 0 && cleanedPhone.length < 3) {
-      setMessage({ type: 'error', text: "Il numero di telefono deve contenere almeno 3 cifre." });
-      return false;
-    }
+    // Rimuoviamo il controllo sulla lunghezza minima per la ricerca
     return true;
   };
 
   const ensureSearchableInputs = () => {
+    // L'unico caso in cui non facciamo ricerca è quando tutti i campi sono vuoti
     if (!hasAnySearchableField) {
-      setMessage({ type: 'error', text: "Inserisci almeno 2 lettere per nome/cognome o 3 cifre per il telefono." });
+      setMessage({ type: 'error', text: "Inserisci almeno un carattere in uno dei campi per effettuare la ricerca." });
       return false;
     }
     return validatePhoneCharacters();
@@ -136,18 +139,10 @@ const Gatekeeper1Form: React.FC = () => {
 
     startLoading('search');
     try {
-      if (mode === 'new') {
-        if (!hasAllRequiredFields) {
-          const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleResolveExistingResult(result, 'search', cleanedPhone, { allowNewInsertion: false });
-        } else {
-          const result = await checkDuplicate({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-          handleDuplicateCheckResult(result, 'search', cleanedPhone);
-        }
-      } else {
-        const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
-        handleResolveExistingResult(result, 'search', cleanedPhone);
-      }
+      // Per il tasto "Cerca", usiamo sempre resolveExisting che è più elastico
+      // e restituisce risultati ordinati per somiglianza
+      const result = await resolveExisting({ firstName: firstName.trim(), lastName: lastName.trim(), phone: cleanedPhone });
+      handleResolveExistingResult(result, 'search', cleanedPhone, { allowNewInsertion: true });
     } catch (error: unknown) {
       console.error("Errore durante la ricerca/risoluzione:", error);
       setMessage({ type: 'error', text: `Si è verificato un errore: ${extractErrorMessage(error)}` });
@@ -428,10 +423,12 @@ const Gatekeeper1Form: React.FC = () => {
       const total = matches.length + near.length + nameNear.length;
       if (total === 0) {
         // Mostra il suggerimento dal backend se disponibile, altrimenti messaggio generico
-        const messageText = result.suggestion || "Nessun cliente affine trovato.";
+        const messageText = result.suggestion || "Nessun cliente affine trovato. Puoi procedere con un nuovo inserimento.";
         setMessage({ type: 'info', text: messageText });
       } else {
-        // Mostra il suggerimento dal backend se disponibile e più specifico, altrimenti messaggio generico
+        // I risultati sono già ordinati per somiglianza dal backend (più simili in cima)
+        // Mostra un messaggio informativo con il numero di risultati trovati
+        const totalText = total === 1 ? 'cliente' : 'clienti';
         const backendMessage = result.suggestion;
         const shouldUseBackendMessage = backendMessage && 
           (backendMessage.includes('Esistono già clienti') || 
@@ -441,10 +438,10 @@ const Gatekeeper1Form: React.FC = () => {
         setMessage({
           type: intent === 'partial-new' ? 'warning' : 'info',
           text: shouldUseBackendMessage
-            ? backendMessage
+            ? `${backendMessage} Trovati ${total} ${totalText} compatibili (ordinati per somiglianza).`
             : intent === 'partial-new'
-              ? "Completa tutti i campi e verifica i clienti simili prima di inserire un nuovo record."
-              : `Trovati ${total} clienti compatibili. Usa 'Apri Modulo' per gestirli.`,
+              ? `Completa tutti i campi e verifica i ${total} ${totalText} simili trovati prima di inserire un nuovo record.`
+              : `Trovati ${total} ${totalText} compatibili (ordinati per somiglianza).`,
         });
       }
       return;
