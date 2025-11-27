@@ -97,15 +97,32 @@ const Gatekeeper1Form: React.FC = () => {
       const orders = await getOrders(baseId);
       
       if (orders && orders.length > 1) {
-        // Se ha più di un ordine, mostra OrderList
-        setCustomerOrders(orders);
-        setSelectedCustomer(customer);
-        setShowOrderList(true);
-        setMessage(null);
-      } else {
-        // Se ha 0 o 1 ordine, apri direttamente il modulo come cliente esistente
         const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
-        // Usa l'ID base (senza suffisso) e i dati del cliente per aprire il modulo
+        setAlertDialogContent({
+          title: "Cliente con ordini multipli",
+          description: (
+            <>
+              <p className="mb-2">Sono stati trovati {orders.length} ordini per questo cliente.</p>
+              <p className="text-sm text-muted-foreground">Puoi scegliere se vedere lo storico oppure aprire subito un nuovo ordine come cliente esistente.</p>
+            </>
+          ),
+          confirmText: "Apri nuovo ordine (cliente esistente)",
+          cancelText: "Vedi storico ordini",
+          onConfirm: async () => {
+            await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
+          },
+          onCancel: () => {
+            setCustomerOrders(orders);
+            setSelectedCustomer(customer);
+            setShowOrderList(true);
+            setMessage(null);
+            setIsAlertDialogOpen(false);
+          },
+          showCancel: true,
+        });
+        setIsAlertDialogOpen(true);
+      } else {
+        const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
         await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
       }
     } catch (error) {
