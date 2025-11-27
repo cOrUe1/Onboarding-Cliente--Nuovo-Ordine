@@ -9,11 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Loader2, Info, TriangleAlert, CircleX, User, Phone } from "lucide-react";
-import { checkDuplicate, resolveExisting, makePrefillUrlGK1 } from "@/api/gatekeeper1";
+import { checkDuplicate, resolveExisting, makePrefillUrlGK1, getOrdersGK1 } from "@/api/gatekeeper1";
 import { showSuccess, showError } from "@/utils/toast";
 import { normalizeName, normalizePhone as normalizePhoneNumber } from "@/lib/utils";
 import OrderList from "@/components/OrderList";
-import { getOrders } from "@/api/gatekeeper";
 
 interface CustomerRecord {
   id: string;
@@ -93,8 +92,8 @@ const Gatekeeper1Form: React.FC = () => {
       const customerFirstName = nameParts[0] || '';
       const customerLastName = nameParts.slice(1).join(' ') || '';
       
-      // Verifica se ha ordini multipli chiamando getOrders
-      const orders = await getOrders(baseId);
+      // Verifica se ha ordini multipli chiamando GK1
+      const orders = await getOrdersGK1(baseId);
       
       if (orders && orders.length > 1) {
         const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
@@ -104,6 +103,17 @@ const Gatekeeper1Form: React.FC = () => {
             <>
               <p className="mb-2">Sono stati trovati {orders.length} ordini per questo cliente.</p>
               <p className="text-sm text-muted-foreground">Puoi scegliere se vedere lo storico oppure aprire subito un nuovo ordine come cliente esistente.</p>
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">Esempio ID ordini (con suffisso):</p>
+                <ul className="mt-1 space-y-1">
+                  {orders.slice(0, 3).map((o: any) => (
+                    <li key={o.id} className="text-xs text-muted-foreground">• {o.id}</li>
+                  ))}
+                </ul>
+                {orders.length > 3 && (
+                  <p className="text-xs text-muted-foreground mt-1">…e altri {orders.length - 3} ordini</p>
+                )}
+              </div>
             </>
           ),
           confirmText: "Apri nuovo ordine (cliente esistente)",
