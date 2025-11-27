@@ -85,6 +85,20 @@ export const resolveExisting = async (payload: CheckDuplicatePayload): Promise<R
   });
 };
 
+// Tipi per ordini gestiti da GK1
+export interface GK1Order {
+  id: string;
+  title: string;
+}
+
+/**
+ * Recupera lo storico ordini per un cliente tramite GK1.
+ * Richiede che il backend esponga l'azione "getOrders" e risponda con JSON.
+ */
+export const getOrdersGK1 = async (customerKey: string): Promise<GK1Order[]> => {
+  return callGatekeeper1Api<GK1Order[]>("getOrders", { customerKey });
+};
+
 /**
  * Genera un URL di Google Form precompilato per il Modulo 1.
  */
