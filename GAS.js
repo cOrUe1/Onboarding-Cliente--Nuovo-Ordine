@@ -87,6 +87,39 @@ function gkPhoneDist_(a, b){
   return dp[m][n];
 }
 
+// Helper: calcola distanza di matching elastica (considera substring, prefix, Levenshtein)
+function gkFuzzyScore_(query, target){
+  if (!query || !target) return { dist: 999, type: 'none' };
+  
+  query = query.toLowerCase();
+  target = target.toLowerCase();
+  
+  // Match esatto
+  if (query === target) return { dist: 0, type: 'exact' };
+  
+  // Match che inizia con query (prefix)
+  if (target.indexOf(query) === 0) return { dist: 0.5, type: 'prefix' };
+  
+  // Match che contiene query (substring)
+  if (target.indexOf(query) >= 0) return { dist: 1, type: 'contains' };
+  
+  // Levenshtein distance
+  const levDist = gkLev_(query, target);
+  const maxLen = Math.max(query.length, target.length);
+  
+  // Normalizza la distanza in base alla lunghezza
+  const normalizedDist = maxLen > 0 ? levDist / maxLen : levDist;
+  
+  // Per query corte, accetta match più distanti
+  const threshold = query.length <= 3 ? 0.7 : (query.length <= 5 ? 0.5 : 0.3);
+  
+  if (normalizedDist <= threshold) {
+    return { dist: 1 + levDist, type: 'similar' };
+  }
+  
+  return { dist: 999, type: 'none' };
+}
+
 // ===== Data access =====
 function gkOpenSS_(){ return SpreadsheetApp.openById(GK.SPREADSHEET_ID); }
 
@@ -163,12 +196,28 @@ function gkCheckDuplicateServer(payload){
     });
   }
 
-  // Nome simile (<=1) su tutto il dataset
-  const nameFuzzy = normIn
-    ? rows.map(r=>({ id:r.id, fullName:r.fullName, dist: gkLev_(normIn, r.normName) }))
-          .filter(x=>x.dist <= 1)
-          .sort((a,b)=>a.dist-b.dist)
-    : [];
+  // Nome simile (fuzzy) su tutto il dataset - ricerca più elastica
+  const nameFuzzy = [];
+  if (normIn && normIn.length >= 1){
+    rows.forEach(r=>{
+      const score = gkFuzzyScore_(normIn, r.normName);
+      if (score.dist < 10){
+        nameFuzzy.push({ 
+          id:r.id, 
+          fullName:r.fullName, 
+          dist: score.dist,
+          scoreType: score.type
+        });
+      }
+    });
+    // Ordina per rilevanza
+    const typeOrder = { 'exact': 0, 'prefix': 1, 'contains': 2, 'similar': 3, 'none': 999 };
+    nameFuzzy.sort((a, b) => {
+      const typeDiff = (typeOrder[a.scoreType] || 999) - (typeOrder[b.scoreType] || 999);
+      if (typeDiff !== 0) return typeDiff;
+      return a.dist - b.dist;
+    });
+  }
 
   // 1) Tutto identico (nome+cognome+telefono)
   if (exactSame){
@@ -212,92 +261,206 @@ function gkResolveExistingServer(payload){
   const normIn    = gkNormalizeName_([firstName,lastName].join(' '));
   const rows      = gkReadPipeline_();
 
-  if (!phoneIn && !normIn){
-    throw new Error('Inserisci almeno un nome/cognome o un telefono con 3 cifre.');
+  // Ricerca elastica: accetta anche input minimi (1 carattere/numero)
+  if (!phoneIn && !normIn && firstName.length === 0 && lastName.length === 0){
+    throw new Error('Inserisci almeno un carattere in uno dei campi per effettuare la ricerca.');
   }
 
-  // === Caso con telefono: logica precedente ===
-  if (phoneIn){
+  // === Caso con telefono: ricerca elastica ===
+  if (phoneIn && phoneIn.length >= 1){
     const exact = [];
     const near  = [];
     const nameNear = [];
 
     rows.forEach(r=>{
+      let bestPhoneMatch = null;
+      let bestPhoneScore = 999;
+      
+      // Cerca il miglior match telefonico
       (r.phones||[]).forEach(p=>{
-        const d = gkPhoneDist_(phoneIn, p);
-        if (d === 0){
-          const distName = gkLev_(normIn, r.normName);
-          exact.push({ id:r.id, fullName:r.fullName, phone:p, distName });
-        } else if (d === 1){
-          near.push({ id:r.id, fullName:r.fullName, phone:p, dist: d });
+        // Match esatto
+        if (p.indexOf(phoneIn) === 0 || p === phoneIn){
+          const score = p === phoneIn ? 0 : 0.5;
+          if (score < bestPhoneScore){
+            bestPhoneScore = score;
+            bestPhoneMatch = p;
+          }
+        } else {
+          // Match parziale (contiene)
+          if (p.indexOf(phoneIn) >= 0){
+            const score = 1;
+            if (score < bestPhoneScore){
+              bestPhoneScore = score;
+              bestPhoneMatch = p;
+            }
+          } else {
+            // Levenshtein distance per telefoni
+            const d = gkPhoneDist_(phoneIn, p);
+            if (d <= 2 && d < bestPhoneScore){
+              bestPhoneScore = d + 1;
+              bestPhoneMatch = p;
+            }
+          }
         }
       });
-      const nd = gkLev_(normIn, r.normName);
-      if (normIn && nd <= 1){ nameNear.push({ id:r.id, fullName:r.fullName, dist: nd }); }
+      
+      // Se abbiamo un match telefonico
+      if (bestPhoneMatch && bestPhoneScore < 3){
+        const nameScore = normIn ? gkFuzzyScore_(normIn, r.normName) : { dist: 999, type: 'none' };
+        
+        if (bestPhoneScore === 0 || bestPhoneScore === 0.5){
+          exact.push({ 
+            id:r.id, 
+            fullName:r.fullName, 
+            phone:bestPhoneMatch, 
+            distName: nameScore.dist,
+            nameScore: nameScore.type
+          });
+        } else {
+          near.push({ 
+            id:r.id, 
+            fullName:r.fullName, 
+            phone:bestPhoneMatch, 
+            dist: bestPhoneScore 
+          });
+        }
+      }
+      
+      // Aggiungi match per nome anche senza telefono
+      if (normIn && normIn.length >= 1){
+        const nameScore = gkFuzzyScore_(normIn, r.normName);
+        if (nameScore.dist < 10){
+          nameNear.push({ 
+            id:r.id, 
+            fullName:r.fullName, 
+            phone: gkPrimaryPhone_(r) || '',
+            dist: nameScore.dist,
+            scoreType: nameScore.type
+          });
+        }
+      }
     });
 
+    // Rimuovi duplicati da nameNear
+    const nameNearMap = new Map();
+    nameNear.forEach(item => {
+      if (!nameNearMap.has(item.id) || nameNearMap.get(item.id).dist > item.dist){
+        nameNearMap.set(item.id, item);
+      }
+    });
+    const nameNearUnique = Array.from(nameNearMap.values());
+
     if (exact.length){
-      exact.sort((a,b)=>a.distName-b.distName);
+      exact.sort((a,b)=>{
+        if (a.distName !== b.distName) return a.distName - b.distName;
+        return a.nameScore === 'exact' ? -1 : (b.nameScore === 'exact' ? 1 : 0);
+      });
       const best = exact[0];
-      return { found:true, record:best, matches:exact, near, nameNear };
+      nameNearUnique.sort((a,b)=>a.dist-b.dist);
+      return { found:true, record:best, matches:exact, near, nameNear:nameNearUnique.slice(0, 20) };
     }
 
     near.sort((a,b)=>a.dist-b.dist);
-    nameNear.sort((a,b)=>a.dist-b.dist);
+    nameNearUnique.sort((a,b)=>a.dist-b.dist);
+    
+    // Limita i risultati per performance
+    const maxResults = 50;
     return {
       found:false,
-      suggestion:'Numero non presente: inseriscilo come nuovo cliente.',
+      suggestion: near.length > 0 
+        ? 'Numero non esattamente presente ma trovati numeri simili. Verifica la lista.'
+        : (nameNearUnique.length > 0 
+            ? 'Numero non presente. Trovati clienti con nomi simili.'
+            : 'Numero non presente: inseriscilo come nuovo cliente.'),
       matches:[],
-      near,
-      nameNear
+      near: near.slice(0, maxResults),
+      nameNear: nameNearUnique.slice(0, maxResults)
     };
   }
 
-  // === Caso senza telefono: ricerca per nome ===
+  // === Caso senza telefono: ricerca per nome elastica ===
   const baseRows = rows.filter(r => !/_/.test(r.id || ''));
-  const exactNames = [];
-  const similarNames = [];
+  const results = [];
 
-  baseRows.forEach(r=>{
-    const d = gkLev_(normIn, r.normName);
-    if (d === 0){
-      exactNames.push({
-        id: r.id,
-        fullName: r.fullName,
-        phone: gkPrimaryPhone_(r) || '',
-        dist: d
-      });
-    } else if (d === 1){
-      similarNames.push({
-        id: r.id,
-        fullName: r.fullName,
-        phone: gkPrimaryPhone_(r) || '',
-        dist: d
-      });
+  // Se abbiamo un nome normalizzato, cerca
+  if (normIn && normIn.length >= 1){
+    baseRows.forEach(r=>{
+      const score = gkFuzzyScore_(normIn, r.normName);
+      if (score.dist < 10){
+        results.push({
+          id: r.id,
+          fullName: r.fullName,
+          phone: gkPrimaryPhone_(r) || '',
+          dist: score.dist,
+          scoreType: score.type
+        });
+      }
+    });
+  } else if (firstName.length >= 1 || lastName.length >= 1){
+    // Ricerca separata per nome e cognome se normIn è vuoto
+    const searchTerm = firstName.length >= 1 ? firstName.toLowerCase() : lastName.toLowerCase();
+    
+    baseRows.forEach(r=>{
+      const fullNameLower = r.fullName.toLowerCase();
+      const score = gkFuzzyScore_(searchTerm, fullNameLower);
+      
+      if (score.dist < 10){
+        results.push({
+          id: r.id,
+          fullName: r.fullName,
+          phone: gkPrimaryPhone_(r) || '',
+          dist: score.dist,
+          scoreType: score.type
+        });
+      }
+    });
+  }
+
+  // Rimuovi duplicati
+  const resultsMap = new Map();
+  results.forEach(item => {
+    if (!resultsMap.has(item.id) || resultsMap.get(item.id).dist > item.dist){
+      resultsMap.set(item.id, item);
     }
   });
+  const uniqueResults = Array.from(resultsMap.values());
 
-  if (exactNames.length === 1){
+  // Ordina per rilevanza (exact > prefix > contains > similar)
+  const typeOrder = { 'exact': 0, 'prefix': 1, 'contains': 2, 'similar': 3, 'none': 999 };
+  uniqueResults.sort((a, b) => {
+    const typeDiff = (typeOrder[a.scoreType] || 999) - (typeOrder[b.scoreType] || 999);
+    if (typeDiff !== 0) return typeDiff;
+    return a.dist - b.dist;
+  });
+
+  // Separa exact e similar per retrocompatibilità
+  const exactNames = uniqueResults.filter(r => r.scoreType === 'exact');
+  const similarNames = uniqueResults.filter(r => r.scoreType !== 'exact');
+
+  // Limita i risultati per performance
+  const maxResults = 50;
+  const limitedResults = uniqueResults.slice(0, maxResults);
+
+  if (exactNames.length === 1 && similarNames.length === 0){
     return {
       found: true,
       record: exactNames[0],
       matches: [],
       near: [],
-      nameNear: similarNames
+      nameNear: []
     };
   }
 
-  const combinedSuggestions = exactNames.concat(similarNames).sort((a,b)=>a.dist-b.dist);
   return {
     found: false,
-    suggestion: exactNames.length
+    suggestion: exactNames.length > 0
       ? 'Esistono già clienti con lo stesso nome. Seleziona quello corretto o completa i campi.'
-      : (similarNames.length
+      : (similarNames.length > 0
           ? 'Sono stati trovati nomi simili. Verifica la lista prima di inserire un nuovo cliente.'
           : 'Nessun nominativo affine trovato. Puoi procedere con un nuovo inserimento.'),
     matches: [],
     near: [],
-    nameNear: combinedSuggestions
+    nameNear: limitedResults
   };
 }
 
