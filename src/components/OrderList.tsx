@@ -117,7 +117,7 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
           ID cliente: <span className="font-mono">{customer.customerKey}</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          Gli ordini successivi al primo includono il suffisso finale nell'ID (es. <span className="font-mono">{customer.customerKey}_02</span>).
+          Gli ID dei nuovi ordini includono il suffisso finale (es. <span className="font-mono">{customer.customerKey}_02</span>).
         </div>
         {loading && (
           <div className="flex justify-center items-center">
