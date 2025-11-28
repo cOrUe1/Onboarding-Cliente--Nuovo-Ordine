@@ -102,10 +102,21 @@ const Gatekeeper1Form: React.FC = () => {
           description: (
             <>
               <p className="mb-2">Sono stati trovati {orders.length} ordini per questo cliente.</p>
-              <p className="text-sm text-muted-foreground">Puoi scegliere se vedere lo storico oppure aprire subito un nuovo ordine per questo cliente.</p>
+              <p className="text-sm text-muted-foreground">Puoi scegliere se vedere lo storico oppure aprire subito un nuovo ordine come cliente esistente.</p>
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">Esempio ID ordini (con suffisso):</p>
+                <ul className="mt-1 space-y-1">
+                  {orders.slice(0, 3).map((o: any) => (
+                    <li key={o.id} className="text-xs text-muted-foreground">• {o.id}</li>
+                  ))}
+                </ul>
+                {orders.length > 3 && (
+                  <p className="text-xs text-muted-foreground mt-1">…e altri {orders.length - 3} ordini</p>
+                )}
+              </div>
             </>
           ),
-          confirmText: "Carica nuovo ordine",
+          confirmText: "Apri nuovo ordine (cliente esistente)",
           cancelText: "Vedi storico ordini",
           onConfirm: async () => {
             await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
