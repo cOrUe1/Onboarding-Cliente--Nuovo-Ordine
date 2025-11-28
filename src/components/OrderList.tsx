@@ -114,10 +114,10 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <div className="text-xs text-muted-foreground">
-          ID cliente base: <span className="font-mono">{customer.customerKey}</span>
+          ID cliente: <span className="font-mono">{customer.customerKey}</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          Gli ID degli ordini includono il suffisso finale (es. <span className="font-mono">{customer.customerKey}_02</span>).
+          I nuovi ordini includono il suffisso finale nell'ID (es. <span className="font-mono">{customer.customerKey}_02</span>).
         </div>
         {loading && (
           <div className="flex justify-center items-center">
