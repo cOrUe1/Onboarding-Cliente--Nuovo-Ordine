@@ -134,8 +134,8 @@ function gkReadPipeline_(){
 
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-
-  const vals = sh.getRange(2, 1, lastRow-1, 6).getValues(); // A..F
+  // Legge A..K (11 colonne) per avere anche J (descrizione ambienti) e K (nome elemento singolo)
+  const vals = sh.getRange(2, 1, lastRow-1, 11).getValues(); // A..K
   const data = [];
 
   for (let i=0;i<vals.length;i++){
@@ -144,6 +144,8 @@ function gkReadPipeline_(){
     const D_cognome = String(vals[i][3] || '').trim(); // D è index 3
     const E_cliente = String(vals[i][4] || '').trim(); // E è index 4
     const F_tel     = vals[i][5];                      // F è index 5
+    const J_ambienti= String(vals[i][9] || '').trim(); // J è index 9
+    const K_elemento= String(vals[i][10]|| '').trim(); // K è index 10
 
     const fullName  = E_cliente || (C_nome || D_cognome ? (C_nome + ' ' + D_cognome).trim() : '');
     const phones    = gkParsePhones_(F_tel || '');
@@ -157,7 +159,9 @@ function gkReadPipeline_(){
       normFirst: gkNormalizeName_(C_nome),
       normLast: gkNormalizeName_(D_cognome),
       phones,
-      rawPhone: String(F_tel || '').trim()
+      rawPhone: String(F_tel || '').trim(),
+      orderAreasRaw: J_ambienti,
+      singleItemName: K_elemento
     });
   }
   return data;
@@ -507,7 +511,30 @@ function gkGetOrdersServer(payload){
   const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:_\\d+)?$');
   const orders = rows
     .filter(r => r && r.id && re.test(String(r.id)))
-    .map(r => ({ id: String(r.id), title: (r.fullName ? (r.fullName + ' — ') : '') + String(r.id) }));
+    .map(r => {
+      // Costruisci il "nome ordine" partendo dalla colonna J.
+      // Se J contiene "Elemento singolo", sostituisci quel token con K.
+      const raw = (r.orderAreasRaw || '').toString();
+      const kVal = (r.singleItemName || '').toString().trim();
+      let parts = raw
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      const idx = parts.findIndex(p => p.toLowerCase() === 'elemento singolo');
+      if (idx >= 0) {
+        if (kVal) {
+          parts[idx] = kVal; // sostituisci con il contenuto di K
+        } else {
+          // se K è vuoto, rimuovi "Elemento singolo"
+          parts.splice(idx, 1);
+        }
+      }
+
+      const orderName = parts.length ? parts.join(', ') : '';
+      const title = (r.fullName ? (r.fullName + (orderName ? ' — ' : '')) : '') + orderName;
+      return { id: String(r.id), title };
+    });
   return orders;
 }
 
