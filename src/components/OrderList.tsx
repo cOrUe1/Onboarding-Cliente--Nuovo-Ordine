@@ -138,14 +138,9 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
           <div className="space-y-2">
             {orders.map((order) => (
               <Card key={order.orderId} className="p-2">
-                <CardContent className="p-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-base">{order.label}</p>
-                    <p className="text-sm text-muted-foreground">ID Ordine: {order.orderId}</p>
-                  </div>
-                  <Button onClick={() => handleOpenForm(order)} className="btn flex-shrink-0">
-                    Apri Modulo <ExternalLink className="ml-2 h-4 w-4" />
-                  </Button>
+                <CardContent className="p-2">
+                  <p className="font-medium text-base">{order.label}</p>
+                  <p className="text-sm text-muted-foreground">ID Ordine: {order.orderId}</p>
                 </CardContent>
               </Card>
             ))}
