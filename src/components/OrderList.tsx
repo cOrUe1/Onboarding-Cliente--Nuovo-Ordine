@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getOrders, makePrefillUrl } from "@/api/gatekeeper";
+import { getOrdersGK1, makePrefillUrlGK1 } from "@/api/gatekeeper1";
 import { Loader2, ExternalLink, ArrowLeft, Info, TriangleAlert, CircleX } from "lucide-react"; // Import icons for alerts
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Import Alert components
 
@@ -36,7 +36,7 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
       setLoading(true);
       setMessage({ type: 'info', text: "Caricamento ordini…" });
       try {
-        const fetchedOrders = await getOrders(customer.customerKey);
+        const fetchedOrders = await getOrdersGK1(customer.customerKey);
         // Mappa gli ordini recuperati per corrispondere all'interfaccia Order
         const mappedOrders = fetchedOrders.map((order: { id: string; title: string }) => ({
           orderId: order.id,
@@ -62,9 +62,17 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
   const handleOpenForm = async (order: Order) => {
     setMessage({ type: 'info', text: "Apertura modulo…" });
     try {
-      const prefillUrl = await makePrefillUrl({
-        orderId: order.orderId,
-        customerName: customer.fullName,
+      // Apri Modulo 1 (GK1) come cliente esistente
+      const [firstName, ...rest] = customer.fullName.split(' ');
+      const lastName = rest.join(' ');
+      const phone = customer.phones?.[0] || '';
+
+      const prefillUrl = await makePrefillUrlGK1({
+        firstName: firstName || '',
+        lastName: lastName || '',
+        phone,
+        newCustomer: 'No',
+        customerId: customer.customerKey,
       });
 
       console.log("Generated Prefill URL:", prefillUrl); // Log per debug
@@ -105,6 +113,12 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
         <div className="w-10"></div> {/* Placeholder for alignment */}
       </CardHeader>
       <CardContent className="space-y-4 p-4">
+        <div className="text-xs text-muted-foreground">
+          ID cliente base: <span className="font-mono">{customer.customerKey}</span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Gli ID degli ordini includono il suffisso finale (es. <span className="font-mono">{customer.customerKey}_02</span>).
+        </div>
         {loading && (
           <div className="flex justify-center items-center">
             <Loader2 className="mr-2 h-6 w-6 animate-spin" />
@@ -124,14 +138,9 @@ const OrderList: React.FC<OrderListProps> = ({ customer, onBack, onNewOrder }) =
           <div className="space-y-2">
             {orders.map((order) => (
               <Card key={order.orderId} className="p-2">
-                <CardContent className="p-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-base">{order.label}</p>
-                    <p className="text-sm text-muted-foreground">ID Ordine: {order.orderId}</p>
-                  </div>
-                  <Button onClick={() => handleOpenForm(order)} className="btn flex-shrink-0">
-                    Apri Modulo <ExternalLink className="ml-2 h-4 w-4" />
-                  </Button>
+                <CardContent className="p-2">
+                  <p className="font-medium text-base">{order.label}</p>
+                  <p className="text-sm text-muted-foreground">ID Ordine: {order.orderId}</p>
                 </CardContent>
               </Card>
             ))}

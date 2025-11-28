@@ -9,11 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Loader2, Info, TriangleAlert, CircleX, User, Phone } from "lucide-react";
-import { checkDuplicate, resolveExisting, makePrefillUrlGK1 } from "@/api/gatekeeper1";
+import { checkDuplicate, resolveExisting, makePrefillUrlGK1, getOrdersGK1 } from "@/api/gatekeeper1";
 import { showSuccess, showError } from "@/utils/toast";
 import { normalizeName, normalizePhone as normalizePhoneNumber } from "@/lib/utils";
 import OrderList from "@/components/OrderList";
-import { getOrders } from "@/api/gatekeeper";
 
 interface CustomerRecord {
   id: string;
@@ -93,19 +92,47 @@ const Gatekeeper1Form: React.FC = () => {
       const customerFirstName = nameParts[0] || '';
       const customerLastName = nameParts.slice(1).join(' ') || '';
       
-      // Verifica se ha ordini multipli chiamando getOrders
-      const orders = await getOrders(baseId);
+      // Verifica se ha ordini multipli chiamando GK1
+      const orders = await getOrdersGK1(baseId);
       
       if (orders && orders.length > 1) {
-        // Se ha più di un ordine, mostra OrderList
-        setCustomerOrders(orders);
-        setSelectedCustomer(customer);
-        setShowOrderList(true);
-        setMessage(null);
-      } else {
-        // Se ha 0 o 1 ordine, apri direttamente il modulo come cliente esistente
         const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
-        // Usa l'ID base (senza suffisso) e i dati del cliente per aprire il modulo
+        setAlertDialogContent({
+          title: "Cliente con ordini multipli",
+          description: (
+            <>
+              <p className="mb-2">Sono stati trovati {orders.length} ordini per questo cliente.</p>
+              <p className="text-sm text-muted-foreground">Puoi scegliere se vedere lo storico oppure aprire subito un nuovo ordine come cliente esistente.</p>
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">Esempio ID ordini (con suffisso):</p>
+                <ul className="mt-1 space-y-1">
+                  {orders.slice(0, 3).map((o: any) => (
+                    <li key={o.id} className="text-xs text-muted-foreground">• {o.id}</li>
+                  ))}
+                </ul>
+                {orders.length > 3 && (
+                  <p className="text-xs text-muted-foreground mt-1">…e altri {orders.length - 3} ordini</p>
+                )}
+              </div>
+            </>
+          ),
+          confirmText: "Apri nuovo ordine (cliente esistente)",
+          cancelText: "Vedi storico ordini",
+          onConfirm: async () => {
+            await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
+          },
+          onCancel: () => {
+            setCustomerOrders(orders);
+            setSelectedCustomer(customer);
+            setShowOrderList(true);
+            setMessage(null);
+            setIsAlertDialogOpen(false);
+          },
+          showCancel: true,
+        });
+        setIsAlertDialogOpen(true);
+      } else {
+        const phoneFromRecord = customer.phone ? normalizePhoneNumber(customer.phone) : cleanedPhone;
         await openFormWithCustomerData('No', baseId, phoneFromRecord, customerFirstName, customerLastName);
       }
     } catch (error) {

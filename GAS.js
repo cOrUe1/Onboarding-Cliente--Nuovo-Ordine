@@ -134,8 +134,8 @@ function gkReadPipeline_(){
 
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-
-  const vals = sh.getRange(2, 1, lastRow-1, 6).getValues(); // A..F
+  // Legge A..K (11 colonne) per avere anche J (descrizione ambienti) e K (nome elemento singolo)
+  const vals = sh.getRange(2, 1, lastRow-1, 11).getValues(); // A..K
   const data = [];
 
   for (let i=0;i<vals.length;i++){
@@ -144,6 +144,8 @@ function gkReadPipeline_(){
     const D_cognome = String(vals[i][3] || '').trim(); // D è index 3
     const E_cliente = String(vals[i][4] || '').trim(); // E è index 4
     const F_tel     = vals[i][5];                      // F è index 5
+    const J_ambienti= String(vals[i][9] || '').trim(); // J è index 9
+    const K_elemento= String(vals[i][10]|| '').trim(); // K è index 10
 
     const fullName  = E_cliente || (C_nome || D_cognome ? (C_nome + ' ' + D_cognome).trim() : '');
     const phones    = gkParsePhones_(F_tel || '');
@@ -154,8 +156,12 @@ function gkReadPipeline_(){
       id: A_id,
       fullName,
       normName: gkNormalizeName_(fullName),
+      normFirst: gkNormalizeName_(C_nome),
+      normLast: gkNormalizeName_(D_cognome),
       phones,
-      rawPhone: String(F_tel || '').trim()
+      rawPhone: String(F_tel || '').trim(),
+      orderAreasRaw: J_ambienti,
+      singleItemName: K_elemento
     });
   }
   return data;
@@ -168,6 +174,8 @@ function gkCheckDuplicateServer(payload){
   const firstName = (payload.firstName||'').trim();
   const lastName  = (payload.lastName ||'').trim();
   const phoneIn   = gkCanonicalPhone_(payload.phone||'');
+  const normFirstIn = gkNormalizeName_(firstName);
+  const normLastIn  = gkNormalizeName_(lastName);
   const normIn    = gkNormalizeName_([firstName,lastName].join(' '));
 
   const rows = gkReadPipeline_();
@@ -196,17 +204,25 @@ function gkCheckDuplicateServer(payload){
     });
   }
 
-  // Nome simile (fuzzy) su tutto il dataset - ricerca più elastica
+  // Nome simile (fuzzy) su tutto il dataset: avvisa SOLO se coincidono sia Nome sia Cognome
   const nameFuzzy = [];
-  if (normIn && normIn.length >= 1){
+  if (normFirstIn && normFirstIn.length >= 1 && normLastIn && normLastIn.length >= 1){
     rows.forEach(r=>{
-      const score = gkFuzzyScore_(normIn, r.normName);
-      if (score.dist < 10){
+      const scoreFirst = gkFuzzyScore_(normFirstIn, r.normFirst || '');
+      const scoreLast  = gkFuzzyScore_(normLastIn,  r.normLast  || '');
+      const okFirst = (scoreFirst.type !== 'none') && (scoreFirst.dist < 10);
+      const okLast  = (scoreLast.type  !== 'none') && (scoreLast.dist  < 10);
+      if (okFirst && okLast){
+        // Usa la peggiore tra le due per ordinare (più conservativo)
+        const combinedDist = Math.max(scoreFirst.dist, scoreLast.dist);
+        const combinedType = (scoreFirst.type === 'exact' && scoreLast.type === 'exact') ? 'exact' :
+                             (scoreFirst.type === 'prefix' && scoreLast.type === 'prefix') ? 'prefix' :
+                             (scoreFirst.type === 'contains' && scoreLast.type === 'contains') ? 'contains' : 'similar';
         nameFuzzy.push({ 
           id:r.id, 
           fullName:r.fullName, 
-          dist: score.dist,
-          scoreType: score.type
+          dist: combinedDist,
+          scoreType: combinedType
         });
       }
     });
@@ -484,6 +500,44 @@ function gkMakePrefillUrl(payload){
   return base + (kv.length ? (sep + kv.join('&')) : '');
 }
 
+// Recupero ordini per un cliente (customerKey = ID base senza suffisso)
+function gkGetOrdersServer(payload){
+  const base = (payload && payload.customerKey || '').toString().trim();
+  if (!base) {
+    return [];
+  }
+  const rows = gkReadPipeline_();
+  // Considera ordini con ID uguale al base o con suffisso _NN
+  const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:_\\d+)?$');
+  const orders = rows
+    .filter(r => r && r.id && re.test(String(r.id)))
+    .map(r => {
+      // Costruisci il "nome ordine" partendo dalla colonna J.
+      // Se J contiene "Elemento singolo", sostituisci quel token con K.
+      const raw = (r.orderAreasRaw || '').toString();
+      const kVal = (r.singleItemName || '').toString().trim();
+      let parts = raw
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      const idx = parts.findIndex(p => p.toLowerCase() === 'elemento singolo');
+      if (idx >= 0) {
+        if (kVal) {
+          parts[idx] = kVal; // sostituisci con il contenuto di K
+        } else {
+          // se K è vuoto, rimuovi "Elemento singolo"
+          parts.splice(idx, 1);
+        }
+      }
+
+      const orderName = parts.length ? parts.join(', ') : '';
+      const title = (r.fullName ? (r.fullName + (orderName ? ' — ' : '')) : '') + orderName;
+      return { id: String(r.id), title };
+    });
+  return orders;
+}
+
 // ===== Web App UI =====
 function doGet(e){
   const action = e && e.parameter && e.parameter.action;
@@ -497,6 +551,8 @@ function doGet(e){
         data = gkResolveExistingServer(e.parameter || {});
       } else if (action === 'makePrefillUrl'){
         data = gkMakePrefillUrl(e.parameter || {});
+      } else if (action === 'getOrders'){
+        data = gkGetOrdersServer(e.parameter || {});
       } else {
         throw new Error('Azione non supportata: ' + action);
       }
