@@ -463,6 +463,7 @@ const Gatekeeper1Form: React.FC = () => {
     const matches = result.matches ?? [];
     const near = result.near ?? [];
     const nameNear = result.nameNear ?? [];
+    const singleRecord = result.found && result.record ? result.record : null;
     const sections: MatchSection[] = [];
 
     if (matches.length > 0) {
@@ -487,10 +488,25 @@ const Gatekeeper1Form: React.FC = () => {
       });
     }
 
+    if (!matches.length && !near.length && !nameNear.length && singleRecord) {
+      sections.push({
+        title: "Cliente trovato",
+        description: "Corrispondenza esatta ai dati inseriti.",
+        items: [
+          {
+            id: singleRecord.id,
+            fullName: singleRecord.fullName,
+            phone: singleRecord.phone || "",
+            dist: (singleRecord as any).dist ?? (singleRecord as any).distName ?? undefined,
+          },
+        ],
+      });
+    }
+
     setMatchSections(sections);
 
     if (intent === 'search' || intent === 'partial-new') {
-      const total = matches.length + near.length + nameNear.length;
+      const total = matches.length + near.length + nameNear.length + (singleRecord ? 1 : 0);
       if (total === 0) {
         // Mostra il suggerimento dal backend se disponibile, altrimenti messaggio generico
         const messageText = result.suggestion || "Nessun cliente affine trovato. Puoi procedere con un nuovo inserimento.";
